@@ -1,2 +1,4 @@
-# apple
-A command-line tools that facilitates working with the ARACNE program.
+# apple.py
+A command-line tool that facilitates working with the ARACNE program.
+
+(Coming soon).

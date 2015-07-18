@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+###################################################
+#
+# apple.py - Aracne Processing PipeLine Extensions.
+#
+# (c) 2015, Alberto Riva, Son Le
+#           University of Florida
+###################################################
+
 import sys
 import glob
 import math
@@ -8,12 +16,18 @@ import random
 from scipy.stats import norm
 
 ## ToDo:
-## Check for division by zero in normalization (sigma=0)
-## Don't output hub genes with no edges
+## Check for division by zero in normalization (sigma=0) - Done
+## Don't output hub genes with no edges - Done
 ## Finish -f and -c arguments
 ## Add command for table stats
+## Validate arguments for top-level commands
 
 # Utils
+
+def readLines(filename):
+    with open(filename, "r") as f:
+        lines = f.readlines()
+    return [ s.rstrip("\n") for s in lines ]
 
 def changeExtension(filename, newext):
     (name, ext) = os.path.splitext(filename)
@@ -69,11 +83,6 @@ def writeSubmitScript(outfile, datafiles, outdir="results/", pval="1e-7", dpi=0.
             o.write("PREV4=`submit aracne-step1.qsub {} {}.ad IDSad`\n".format(df, of))
             o.write("submit -after $PREV1 -after $PREV2 -after $PREV3 -after $PREV4 aracne-step2.qsub {} {} {}/{} {} {}\n".format(df, of, outdir, oof, pval, dpi))
             o.write("\n")
-
-def readLines(filename):
-    with open(filename, "r") as f:
-        lines = f.readlines()
-    return [ s.rstrip("\n") for s in lines ]
 
 def writeSubmitScriptSplit(outfile, datafiles, split, outdir="results/", pval="1e-7", dpi=0.1):
     spl = readLines(split)
@@ -235,10 +244,13 @@ bstable, giving it index `idx'."""
 values in the pvalues dictionary for speed."""
         if support in self.pvalues:
             return self.pvalues[support]
-        z = (support - self.mu) / self.sigma
-        p = 1 - norm.cdf(z)
-        self.pvalues[support] = p
-        return p
+        if self.sigma == 0:
+            return 1
+        else:
+            z = (support - self.mu) / self.sigma
+            p = 1 - norm.cdf(z)
+            self.pvalues[support] = p
+            return p
 
     def supportDistribution(self):
         """Returns a dictionary mapping each support count (ie,
@@ -270,15 +282,16 @@ times it occurs in totsupport."""
         with open(filename, "w") as out:
             out.write(header)
             for (hub, table) in self.totsupport.iteritems():
-                out.write(self.decodeName(hub))
-                for (gene, edge) in table.iteritems():
-                    support = edge[0]
-                    mi = edge[1]
-                    p = self.getpval(support)
-                    if p < pval:
-                        nwritten += 1
-                        out.write("\t{}\t{}".format(self.decodeName(gene), mi / support))
-                out.write("\n")
+                if len(table) > 0:
+                    out.write(self.decodeName(hub))
+                    for (gene, edge) in table.iteritems():
+                        support = edge[0]
+                        mi = edge[1]
+                        p = self.getpval(support)
+                        if p < pval:
+                            nwritten += 1
+                            out.write("\t{}\t{}".format(self.decodeName(gene), mi / support))
+                    out.write("\n")
         print "{} edges written to consensus network.".format(nwritten)
 
         return nwritten
@@ -289,14 +302,15 @@ times it occurs in totsupport."""
         with open(filename, "w") as out:
             out.write(header)
             for (hub, table) in self.totsupport.iteritems():
-                out.write(self.decodeName(hub))
-                for (gene, edge) in table.iteritems():
-                    support = edge[0]
-                    mi = edge[1]
-                    if support >= minsupport:
-                        nwritten += 1
-                        out.write("\t{}\t{}".format(self.decodeName(gene), mi / support))
-                out.write("\n")
+                if len(table) > 0:
+                    out.write(self.decodeName(hub))
+                    for (gene, edge) in table.iteritems():
+                        support = edge[0]
+                        mi = edge[1]
+                        if support >= minsupport:
+                            nwritten += 1
+                            out.write("\t{}\t{}".format(self.decodeName(gene), mi / support))
+                    out.write("\n")
         print "{} edges written to consensus network.".format(nwritten)
 
         return nwritten
@@ -489,9 +503,7 @@ class extractArgs():
             usage()
             exit()
 
-        with open(self.genesfile, "r") as f:
-            genes = f.readlines()
-            self.geneslist = [ s.rstrip("\n") for s in genes ]
+        self.geneslist = readLines(self.genesfile)
             
 
 def main():
@@ -511,7 +523,7 @@ def main():
         usage()
 
 if __name__ == "__main__":
-    print "apple.py - Aracne Python PipeLine Extensions.\n"
+    print "apple.py - Aracne Processing PipeLine Extensions.\n"
     main()
     
 

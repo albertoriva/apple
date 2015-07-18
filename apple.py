@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-###################################################
-#
-# apple.py - Aracne Processing PipeLine Extensions.
-#
-# (c) 2015, Alberto Riva, Son Le
-#           University of Florida
-###################################################
+#####################################################
+#                                                   #
+# apple.py - Aracne Processing PipeLine Extensions. #
+#                                                   #
+# (c) 2015, Alberto Riva, Son Le                    #
+#           University of Florida                   #
+#####################################################
 
 import sys
 import glob
@@ -410,7 +410,7 @@ def aracneAllStats(outfile):
 def usage():
     print "Usage: apple.py command-and-arguments...\n"
     print "Where command-and-arguments can be:\n"
-    print "  bootstrap filename rounds - bootstrap a filename into `rounds' new files.\n"
+    print "  bootstrap filename rounds - bootstrap a file into `rounds' new files.\n"
     print "  extract [-a] adj outfile genesfile - extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format.\n"
     print "  consensus [options] outfile infiles... - generate a consensus network from multiple .adj files."
     print "    Options:"

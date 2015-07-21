@@ -512,7 +512,7 @@ def translateFile(tablefile, infile, outfile):
             parsed = line.rstrip("\n").split("\t")
             if parsed[0] != "\\N":
                 table[parsed[0]] = parsed[1]
-    print "Table loaded, {} genes."
+    print "Table loaded, {} genes.".format(len(table))
     with open(outfile, "w") as out:
         with open(infile, "r") as f:
             for line in f:

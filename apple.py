@@ -505,6 +505,23 @@ class extractArgs():
 
         self.geneslist = readLines(self.genesfile)
             
+def translateFile(tablefile, infile, outfile):
+    table = {}
+    with open(tablefile, "r") as f:
+        for line in f:
+            parsed = line.rstrip("\n").split("\t")
+            if parsed[0] != "\\N":
+                table[parsed[0]] = parsed[1]
+    print "Table loaded, {} genes."
+    with open(outfile, "w") as out:
+        with open(infile, "r") as f:
+            for line in f:
+                parsed = line.rstrip("\n").split("\t")
+                if parsed[0] in table:
+                    parsed[0] = table[parsed[0]]
+                if parsed[1] in table:
+                    parsed[1] = table[parsed[1]]
+                out.write("\t".join(parsed) + "\n")
 
 def main():
     if len(sys.argv) == 1:
@@ -519,6 +536,11 @@ def main():
     elif command == "extract":
         parsed = extractArgs(sys.argv[2:])
         extractGeneSubset(parsed.adjfile, parsed.outfile, parsed.geneslist, both=parsed.both)
+    elif command == "translate":
+        tablefile = sys.argv[2]
+        infile = sys.argv[3]
+        outfile = sys.argv[4]
+        translateFile(tablefile, infile, outfile)
     else:
         usage()
 

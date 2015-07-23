@@ -3,7 +3,7 @@
 #####################################################
 #                                                   #
 # apple.py - Aracne Processing PipeLine Extensions. #
-# prova                                                   #
+#                                                   #
 # (c) 2015, Alberto Riva, Son Le                    #
 #           University of Florida                   #
 #####################################################
@@ -11,9 +11,11 @@
 import sys
 import glob
 import math
+import gzip
 import os.path
 import random
 from scipy.stats import norm
+import numpy.random
 
 ## ToDo:
 ## Check for division by zero in normalization (sigma=0) - Done
@@ -23,6 +25,14 @@ from scipy.stats import norm
 ## Validate arguments for top-level commands
 
 # Utils
+
+def genOpen(filename, mode):
+    """Generalized open() function - works on both regular files and gz files."""
+    (name, ext) = os.path.splitext(filename)
+    if ext == ".gz":
+        return gzip.open(filename, mode)
+    else:
+        return open(filename, mode)
 
 def readLines(filename):
     with open(filename, "r") as f:
@@ -368,11 +378,14 @@ def writeReconstruct(outfile, start, end):
             out.write("echo -n {} \n".format(i))
             out.write("submit ../reconstruct.qsub ../SPLIT all.gene_RPKM.aracne.nozero-{}.adj {}/all.gene_RPKM.aracne.nozero-{}\n".format(i, i, i))
 
-def writeStep2(outfile, start, end):
+def writeStep2(outfile, start, end, tfs=False):
     with open(outfile, "w") as out:
         out.write("#!/bin/bash\n\n")
         for i in range(start, end):
-            out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj\n".format(i, i))
+            if tfs:
+                out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj tfs={}\n".format(i, i, tfs))
+            else:
+                out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj\n".format(i, i))
 
 def writeStep2b(outfile, start, end):
     with open(outfile, "w") as out:
@@ -388,12 +401,21 @@ number of elements of each row, and the ratio between the sum and the number of
 rows (ie, the average number of elements in each row)."""
     nrows = 0
     nfields = 0
-    with open(filename, "r") as f:
+    with genOpen(filename, "r") as f:
         for line in f:
             if not line[0] == ">":
                 nrows += 1
                 nfields += (line.count("\t") / 2)
     return (nrows, nfields, 1.0 * nfields / nrows)
+
+def doAracneStats(filenames):
+    """Call aracneTableStats on all files in `filenames' printing the 
+results to standard output in tab-delimited format."""
+    sys.stdout.write("Filename\tRows\tTotEdges\tAvgEdges\n")
+    for f in filenames:
+        if os.path.isfile(f):
+            stats = aracneTableStats(f)
+            sys.stdout.write("{}\t{}\t{}\t{}\n".format(f, stats[0], stats[1], stats[2]))
 
 def aracneAllStats(outfile):
     with open(outfile, "w") as out:
@@ -412,6 +434,8 @@ def usage():
     print "Where command-and-arguments can be:\n"
     print "  bootstrap filename rounds - bootstrap a file into `rounds' new files.\n"
     print "  extract [-a] adj outfile genesfile - extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format.\n"
+    print "  stats filenames... - print statistics on all supplied filenames (in adj format).\n"
+    print "  random outfile genesfile nsamples - generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution.\n"
     print "  consensus [options] outfile infiles... - generate a consensus network from multiple .adj files."
     print "    Options:"
     print "    [-c countsfile] - write a tab-delimited file with two columns: support, number of occurrences of support."
@@ -523,6 +547,27 @@ def translateFile(tablefile, infile, outfile):
                     parsed[1] = table[parsed[1]]
                 out.write("\t".join(parsed) + "\n")
 
+# Generate random dataset
+
+def doRandomDataset(outfile, genesfile, nsamples):
+    with open(outfile, "w") as out:
+        out.write("GeneId\tGeneName")
+        for i in range(0, nsamples):
+            out.write("\tSample{}".format(i+1))
+        out.write("\n")
+
+        with open(genesfile, "r") as gf:
+            for gene in gf:
+                gene = gene.rstrip("\n\r")
+                r = random.randint(1, nsamples)
+                p = random.uniform(0.0, 1.0)
+                out.write("{}\t{}".format(gene, gene))
+                for i in range(0, nsamples):
+                    out.write("\t{}".format(numpy.random.negative_binomial(r, p)))
+                out.write("\n")
+
+# Main
+
 def main():
     if len(sys.argv) == 1:
         return usage()
@@ -536,11 +581,15 @@ def main():
     elif command == "extract":
         parsed = extractArgs(sys.argv[2:])
         extractGeneSubset(parsed.adjfile, parsed.outfile, parsed.geneslist, both=parsed.both)
+    elif command == "stats":
+        doAracneStats(sys.argv[2:])
     elif command == "translate":
         tablefile = sys.argv[2]
         infile = sys.argv[3]
         outfile = sys.argv[4]
         translateFile(tablefile, infile, outfile)
+    elif command == "random":
+        doRandomDataset(sys.argv[2], sys.argv[3], int(sys.argv[4]))
     else:
         usage()
 

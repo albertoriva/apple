@@ -59,6 +59,12 @@ def ensureInt(s):
     except ValueError:
         return False
 
+def ensureFloat(s):
+    try:
+        return float(s)
+    except ValueError:
+        return False
+
 def ensureFile(s):
     if os.path.isfile(s):
         return s
@@ -156,6 +162,76 @@ obtained by bootstrapping its columns. Returns the list of new filenames."""
 # Consensus reconstruction
 # This part of the program replaces the getconsensusnet.pl script in the
 # Aracne distribution, which has a number of problems.
+
+class consensusCommand(toplevelCall):
+    outfile = None
+    csvfile = None
+    datafile = None             # File for full network data
+    infiles = []
+    pval = None
+    bonf = True
+    support = None
+    fraction = None
+    
+    def parse(self, args):
+        self.outfile = None
+        self.infiles = []
+        next = ""
+        for arg in args: 
+            if next == "-p":
+                self.pval = ensureFloat(arg)
+                if not self.pval:
+                    return False
+                next = ""
+            elif next == "-d":
+                self.datafile = arg
+                next = ""
+            elif next == "-c":
+                self.csvfile = arg
+                next = ""
+            elif next == "-s":
+                self.support = ensureInt(arg)
+                if not self.support:
+                    return False
+                next = ""
+            elif next == "-f":
+                self.fraction = ensureFloat(arg)
+                if not self.fraction:
+                    return False
+                next = ""
+            elif arg in ["-p", "-c", "-d", "-s", "-f"]:
+                next = arg
+            elif arg == "-nb":
+                bonf=False
+            elif self.outfile == None:
+                self.outfile = arg
+            else:
+                self.infiles.append(arg)
+        return True
+
+    def run(self):
+        outfile = self.outfile
+        infiles = self.infiles
+        print "Consensus reconstruction from {} input files.".format(len(infiles))
+        print "  Output to: {}".format(outfile)
+        if self.pval:
+            print "  P-value threshold: {} (Bonferroni={})".format(self.pval, self.bonf)
+        if self.support:
+            print "  Support threshold: {}".format(self.support)
+        if self.datafile:
+            print "  Network data to: {}".format(self.datafile)
+        if self.csvfile:
+            print "  Support counts to: {}".format(self.csvfile)
+        bs = bstable()
+        bs.loadAllBootstrap(infiles)
+        bs.computeMuSigma()
+        bs.supportDist = bs.supportDistribution()
+        if self.pval:
+            bs.saveConsensusByPval(outfile, self.pval, bs.getTableHeader(infiles[0]), bonferroni=self.bonf)
+        elif self.support:
+            bs.saveConsensusBySupport(outfile, self.support, bs.getTableHeader(infiles[0]))
+        if self.datafile:
+            bs.saveNetworkData(self.datafile)
 
 class bstable():
     totsupport = None
@@ -352,6 +428,34 @@ times it occurs in totsupport."""
 
 # Extract a subset of genes from an .adj file
 
+class extractCommand(toplevelCall):
+    adjfile = None
+    outfile = None
+    genesfile = None
+    geneslist = None
+    both = False
+
+    def parse(self, args):
+        for arg in args:
+            if arg == "-a":
+                self.both = True
+            elif self.adjfile == None:
+                self.adjfile = arg
+            elif self.outfile == None:
+                self.outfile = arg
+            else:
+                self.genesfile = arg
+
+        if (self.adjfile == None) or (self.outfile == None) or (self.genesfile == None):
+            print "This command requires three filenames as arguments."
+            return False
+
+        self.geneslist = readLines(self.genesfile)
+        return True
+
+    def run(self):
+        extractGeneSubset(self.adjfile, self.outfile, self.geneslist, both=self.both)
+
 def addToSeen(seen, g1, g2):
     """Record the fact that an edge connecting `g1' and `g2' was seen in the current network."""
     if g1 in seen:
@@ -399,6 +503,15 @@ If `both' is True, only output edges where both genes belong to the list."""
 
 # Stats command
 
+class statsCommand(toplevelCall):
+    filenames = None
+
+    def parse(self, args):
+        self.filenames = args
+
+    def run(self):
+        doAracneStats(self.filenames)
+
 def aracneTableStats(filename):
     """Returns a tuple containing: the number of rows in the file, the sum of the
 number of elements of each row, and the ratio between the sum and the number of
@@ -433,91 +546,6 @@ def aracneAllStats(outfile):
 
 # Main function and top-level commands
 
-class consensusArgs():
-    outfile = None
-    csvfile = None
-    datafile = None             # File for full network data
-    infiles = []
-    pval = None
-    bonf = True
-    support = None
-    fraction = None
-    
-    def __init__(self, args):
-        self.outfile = None
-        self.infiles = []
-        next = ""
-        for arg in args: 
-            if next == "-p":
-                self.pval = float(arg)
-                next = ""
-            elif next == "-d":
-                self.datafile = arg
-                next = ""
-            elif next == "-c":
-                self.csvfile = arg
-                next = ""
-            elif next == "-s":
-                self.support = int(arg)
-                next = ""
-            elif next == "-f":
-                self.fraction = float(arg)
-                next = ""
-            elif arg in ["-p", "-c", "-d", "-s", "-f"]:
-                next = arg
-            elif arg == "-nb":
-                bonf=False
-            elif self.outfile == None:
-                self.outfile = arg
-            else:
-                self.infiles.append(arg)
-
-def runConsensus(outfile, infiles, params): # pval=None, bonf=True, csvfile=None):
-    print "Consensus reconstruction from {} input files.".format(len(infiles))
-    print "  Output to: {}".format(outfile)
-    if params.pval:
-        print "  P-value threshold: {} (Bonferroni={})".format(params.pval, params.bonf)
-    if params.support:
-        print "  Support threshold: {}".format(params.support)
-    if params.datafile:
-        print "  Network data to: {}".format(params.datafile)
-    if params.csvfile:
-        print "  Support counts to: {}".format(params.csvfile)
-    bs = bstable()
-    bs.loadAllBootstrap(infiles)
-    bs.computeMuSigma()
-    bs.supportDist = bs.supportDistribution()
-    if params.pval:
-        bs.saveConsensusByPval(outfile, params.pval, bs.getTableHeader(infiles[0]), bonferroni=params.bonf)
-    elif params.support:
-        bs.saveConsensusBySupport(outfile, params.support, bs.getTableHeader(infiles[0]))
-    if params.datafile:
-        bs.saveNetworkData(params.datafile)
-
-class extractArgs():
-    adjfile = None
-    outfile = None
-    genesfile = None
-    geneslist = None
-    both = False
-
-    def __init__(self, args):
-        for arg in args:
-            if arg == "-a":
-                self.both = True
-            elif self.adjfile == None:
-                self.adjfile = arg
-            elif self.outfile == None:
-                self.outfile = arg
-            else:
-                self.genesfile = arg
-
-        if (self.adjfile == None) or (self.outfile == None) or (self.genesfile == None):
-            usage()
-            exit()
-
-        self.geneslist = readLines(self.genesfile)
-            
 def translateFile(tablefile, infile, outfile):
     table = {}
     with open(tablefile, "r") as f:
@@ -596,6 +624,44 @@ def main():
     # else:
     #     usage()
 
+COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file into `rounds' new files."),
+            consensusCommand("consensus", "[options] outfile infiles...", "generate a consensus network from multiple .adj files."),
+            toplevelCall("extract", "[-a] adj outfile genesfile",
+                         "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
+            toplevelCall("random", "outfile genesfile nsamples",
+                         "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
+            toplevelCall("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
+            toplevelCall("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'.")]
+
+def findCommand(name):
+    global COMMANDS
+    for c in COMMANDS:
+        if c.name == name:
+            return c
+    return None
+
+def usage(what=None):
+    global COMMANDS
+
+    e = sys.stderr
+    if what == None:
+        e.write("Usage: apple.py command arguments...\n\n")
+        e.write("The following commands are available:\n\n")
+        for c in COMMANDS:
+            e.write("  {} - {}\n".format(c.name, c.shortdesc))
+        e.write("\nUse 'apple.py command' to get a description of each command and its arguments.\n\n")
+
+    else:
+        c = findCommand(what)
+        if c == None:
+            usage()
+        else:
+            e.write("Usage: apple.py {} {} - {}\n".format(c.name, c.argdesc, c.shortdesc))
+            
+if __name__ == "__main__":
+    sys.stderr.write("apple.py - Aracne Processing PipeLine Extensions.\n\n")
+    main()
+    
 # Everything from this point on is not part of the apple.py program. These functions
 # are leftovers from tests and one-off scripts.
 
@@ -673,40 +739,3 @@ def writeStep2b(outfile, start, end):
             if not os.path.isfile(dpi):
                 out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj\n".format(i, i))
 
-COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file into `rounds' new files."),
-            toplevelCall("consensus", "[options] outfile infiles...", "generate a consensus network from multiple .adj files."),
-            toplevelCall("extract", "[-a] adj outfile genesfile",
-                         "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
-            toplevelCall("random", "outfile genesfile nsamples",
-                         "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
-            toplevelCall("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
-            toplevelCall("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'.")]
-
-def findCommand(name):
-    global COMMANDS
-    for c in COMMANDS:
-        if c.name == name:
-            return c
-    return None
-
-def usage(what=None):
-    global COMMANDS
-
-    if what == None:
-        print "Usage: apple.py command arguments...\n"
-        print "The following commands are available:\n"
-        for c in COMMANDS:
-            print "  {} - {}".format(c.name, c.shortdesc)
-        print "\nUse 'apple.py command' to get a description of each command.\n"
-
-    else:
-        c = findCommand(what)
-        if c == None:
-            usage()
-        else:
-            print "Usage: apple.py {} {} - {}".format(c.name, c.argdesc, c.shortdesc)
-            
-if __name__ == "__main__":
-    print "apple.py - Aracne Processing PipeLine Extensions.\n"
-    main()
-    

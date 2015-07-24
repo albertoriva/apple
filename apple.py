@@ -376,16 +376,22 @@ def writeReconstruct(outfile, start, end):
         out.write("#!/bin/bash\n\n")
         for i in range(start, end):
             out.write("echo -n {} \n".format(i))
-            out.write("submit ../reconstruct.qsub ../SPLIT all.gene_RPKM.aracne.nozero-{}.adj {}/all.gene_RPKM.aracne.nozero-{}\n".format(i, i, i))
+            # out.write("submit ../reconstruct.qsub ../SPLIT all.gene_RPKM.aracne.nozero-{}.adj {}/all.gene_RPKM.aracne.nozero-{}\n".format(i, i, i))
+            out.write("submit reconstruct.qsub ../SPLIT randomdata-{}.adj {}/randomdata-{}\n".format(i, i, i))
 
-def writeStep2(outfile, start, end, tfs=False):
+def writeStep2(outfile, start, end, tfs=False, source="all.gene_RPKM.aracne.nozero"):
+    tfsopt = ""
+    if tfs:
+        tfsopt = " tfs={}".format(tfs)
     with open(outfile, "w") as out:
         out.write("#!/bin/bash\n\n")
+        src = source + ".txt"
+        dst = source + "-{}.dpi.adj"
+        adj = source + "-{}.adj"
         for i in range(start, end):
-            if tfs:
-                out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj tfs={}\n".format(i, i, tfs))
-            else:
-                out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj\n".format(i, i))
+            idst = dst.format(i)
+            iadj = adj.format(i)
+            out.write("submit aracne.qsub {} {} dpi=0.1 adj={} {}\n".format(src, idst, iadj, tfsopt))
 
 def writeStep2b(outfile, start, end):
     with open(outfile, "w") as out:

@@ -505,12 +505,24 @@ If `both' is True, only output edges where both genes belong to the list."""
 
 class statsCommand(toplevelCall):
     filenames = None
+    outfile = None
 
     def parse(self, args):
-        self.filenames = args
+        self.filenames = []
+        next = ""
+
+        for a in args:
+            if next == "-o":
+                self.outfile = a
+                next = ""
+            elif a == "-o":
+                next = a
+            else:
+                self.filenames.append(a)
+        return True
 
     def run(self):
-        doAracneStats(self.filenames)
+        doAracneStats(self.filenames, self.outfile)
 
 def aracneTableStats(filename):
     """Returns a tuple containing: the number of rows in the file, the sum of the
@@ -525,14 +537,21 @@ rows (ie, the average number of elements in each row)."""
                 nfields += (line.count("\t") / 2)
     return (nrows, nfields, 1.0 * nfields / nrows)
 
-def doAracneStats(filenames):
+def doAracneStats(filenames, outfile=None):
     """Call aracneTableStats on all files in `filenames' printing the 
-results to standard output in tab-delimited format."""
-    sys.stdout.write("Filename\tRows\tTotEdges\tAvgEdges\n")
+results to standard output (or to `outfile' if provided) in tab-delimited format."""
+    if outfile == None:
+        out = sys.stdout
+    else:
+        out = open(outfile, "w")
+
+    out.write("Filename\tRows\tTotEdges\tAvgEdges\n")
     for f in filenames:
         if os.path.isfile(f):
             stats = aracneTableStats(f)
-            sys.stdout.write("{}\t{}\t{}\t{}\n".format(f, stats[0], stats[1], stats[2]))
+            out.write("{}\t{}\t{}\t{}\n".format(f, stats[0], stats[1], stats[2]))
+    if outfile:
+        out.close()
 
 def aracneAllStats(outfile):
     with open(outfile, "w") as out:
@@ -630,7 +649,7 @@ COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file i
                          "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
             toplevelCall("random", "outfile genesfile nsamples",
                          "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
-            toplevelCall("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
+            statsCommand("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
             toplevelCall("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'.")]
 
 def findCommand(name):

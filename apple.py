@@ -57,7 +57,7 @@ def ensureInt(s):
     try:
         return int(s)
     except ValueError:
-        return False
+        return None
 
 def ensureFloat(s):
     try:
@@ -181,6 +181,7 @@ class consensusCommand(toplevelCall):
             if next == "-p":
                 self.pval = ensureFloat(arg)
                 if not self.pval:
+                    print "The value of -p should be a P-value."
                     return False
                 next = ""
             elif next == "-d":
@@ -191,12 +192,14 @@ class consensusCommand(toplevelCall):
                 next = ""
             elif next == "-s":
                 self.support = ensureInt(arg)
-                if not self.support:
+                if self.support == None:
+                    print "The value of -s, `{}', should be an integer number.".format(arg)
                     return False
                 next = ""
             elif next == "-f":
                 self.fraction = ensureFloat(arg)
                 if not self.fraction:
+                    print "The value of -f should be a number between 0 and 1."
                     return False
                 next = ""
             elif arg in ["-p", "-c", "-d", "-s", "-f"]:
@@ -207,6 +210,7 @@ class consensusCommand(toplevelCall):
                 self.outfile = arg
             else:
                 self.infiles.append(arg)
+
         return True
 
     def run(self):
@@ -226,12 +230,15 @@ class consensusCommand(toplevelCall):
         bs.loadAllBootstrap(infiles)
         bs.computeMuSigma()
         bs.supportDist = bs.supportDistribution()
+        print bs.supportDist
         if self.pval:
             bs.saveConsensusByPval(outfile, self.pval, bs.getTableHeader(infiles[0]), bonferroni=self.bonf)
         elif self.support:
             bs.saveConsensusBySupport(outfile, self.support, bs.getTableHeader(infiles[0]))
         if self.datafile:
             bs.saveNetworkData(self.datafile)
+        if self.csvfile:
+            bs.saveSupportDist(self.csvfile)
 
 class bstable():
     totsupport = None
@@ -308,7 +315,7 @@ class bstable():
         """Load a bootstrap file `filename' into the current
 bstable, giving it index `idx'."""
         numedges = 0
-        with open(filename, "r") as f:
+        with genOpen(filename, "r") as f:
             for line in f:
                 if line[0] != ">":
                     parsed = line.rstrip("\n").split("\t")
@@ -375,14 +382,21 @@ times it occurs in totsupport."""
                     result[support] += 1
                 else:
                     result[support] = 1
-        result
+        return result
 
-    def saveNetworkData(datafile):
+    def saveNetworkData(self, datafile):
         print "Saving network data to {}...".format(datafile)
         with open(datafile, "w") as out:
             for (hub, table) in self.totsupport.iteritems():
                 for (gene, edge) in table.iteritems():
                     out.write("{}\t{}\t{}\t{}\t{}\n".format(self.decodeName(hub), self.decodeName(gene), edge[0], edge[1], self.getpval(edge[0])))
+
+    def saveSupportDist(self, csvfile):
+        print "Saving support distribution to {}...".format(csvfile)
+        with open(csvfile, "w") as out:
+            out.write("#Support\tCount\n")
+            for (supp, cnt) in self.supportDist.iteritems():
+                out.write("{}\t{}\n".format(supp, cnt))
 
     def saveConsensusByPval(self, filename, pval, header, bonferroni=True):
         if bonferroni:
@@ -563,6 +577,50 @@ def aracneAllStats(outfile):
                 tp2 = aracneTableStats(dpi)
                 out.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(i, tp1[0], tp1[1], tp1[2], tp2[1], tp2[2]))
 
+# Histogram of MI values
+
+def doMIhistogram(filename, outfile, mifile=None, nbins=100):
+    mis = []
+    bins = [None for i in range(nbins+1)]
+    with genOpen(filename, "r") as f:
+        for line in f:
+            if not line[0] == ">":
+                parsed = line.rstrip("\n").split("\t")
+                for i in range(2, len(parsed), 2):
+                    mi = float(parsed[i])
+                    mis.append(mi)
+    mis.sort()
+    print "MI range: {} - {}".format(mis[0], mis[-1])
+    if mifile != None:
+        with open(mifile, "w") as out:
+            for m in mis:
+                out.write(str(m) + "\n")
+
+    minmi = mis[0]
+    maxmi = mis[-1]
+    step = (maxmi - minmi) / nbins
+    limit = minmi + step
+    for i in range(nbins+1):
+        bins[i] = [ limit, 0]
+        limit += step
+
+    this = 0
+    bin = bins[this]
+    for m in mis:
+        while m >= bin[0]:       # if we are outside the current bin
+            this += 1           # move to next bin
+            if this == nbins+1:
+                print "end of bins reached, m={}".format(m)
+                print bins
+                return
+            bin = bins[this]    # until we find the one that contains this mi
+        bin[1] += 1             # and increment its counter
+
+    with open(outfile, "w") as out:
+        for bin in bins:
+            out.write("{}\t{}\n".format(bin[0], bin[1]))
+    return bins
+
 # Main function and top-level commands
 
 def translateFile(tablefile, infile, outfile):
@@ -739,16 +797,22 @@ def writeReconstruct(outfile, start, end):
         out.write("#!/bin/bash\n\n")
         for i in range(start, end):
             out.write("echo -n {} \n".format(i))
-            out.write("submit ../reconstruct.qsub ../SPLIT all.gene_RPKM.aracne.nozero-{}.adj {}/all.gene_RPKM.aracne.nozero-{}\n".format(i, i, i))
+            # out.write("submit ../reconstruct.qsub ../SPLIT all.gene_RPKM.aracne.nozero-{}.adj {}/all.gene_RPKM.aracne.nozero-{}\n".format(i, i, i))
+            out.write("submit reconstruct.qsub ../SPLIT randomdata-{}.adj {}/randomdata-{}\n".format(i, i, i))
 
-def writeStep2(outfile, start, end, tfs=False):
+def writeStep2(outfile, start, end, tfs=False, source="all.gene_RPKM.aracne.nozero"):
+    tfsopt = ""
+    if tfs:
+        tfsopt = " tfs={}".format(tfs)
     with open(outfile, "w") as out:
         out.write("#!/bin/bash\n\n")
+        src = source + ".txt"
+        dst = source + "-{}.dpi.adj"
+        adj = source + "-{}.adj"
         for i in range(start, end):
-            if tfs:
-                out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj tfs={}\n".format(i, i, tfs))
-            else:
-                out.write("submit aracne.qsub ../all.gene_RPKM.aracne.nozero.txt all.gene_RPKM.aracne.nozero-{}.dpi.adj dpi=0.1 adj=all.gene_RPKM.aracne.nozero-{}.adj\n".format(i, i))
+            idst = dst.format(i)
+            iadj = adj.format(i)
+            out.write("submit aracne.qsub {} {} dpi=0.1 adj={} {}\n".format(src, idst, iadj, tfsopt))
 
 def writeStep2b(outfile, start, end):
     with open(outfile, "w") as out:

@@ -593,9 +593,45 @@ def aracneAllStats(outfile):
 
 # Histogram of MI values
 
+class histogramCommand(toplevelCall):
+    infile = None
+    outfile = None
+    mifile = None
+    nbins = 100
+
+    def parse(self, args):
+        next = None
+
+        for a in args:
+            if a in ["-m", "-n", "-o"]:
+                next = a
+            elif next == "-m":
+                self.mifile = a
+            elif next == "-n":
+                n = ensureInt(a)
+                if n == None:
+                    print "The value of -n, {}, should be a number.".format(a)
+                    return False
+                self.nbins = n
+            elif next == "-o":
+                self.outfile == a
+            else:
+                self.infile = a
+
+        if self.infile == None or not os.path.isfile(self.infile):
+            print "This command requires an input file."
+            return False
+
+        return True
+
+    def run(self):
+        doHistogram(self.infile, self.outfile, mifile=self.mifile, nbins=self.nbins)
+
 def doMIhistogram(filename, outfile, mifile=None, nbins=100):
     mis = []
     bins = [None for i in range(nbins+1)]
+    outstream = sys.stdout
+
     with genOpen(filename, "r") as f:
         for line in f:
             if not line[0] == ">":
@@ -630,9 +666,14 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100):
             bin = bins[this]    # until we find the one that contains this mi
         bin[1] += 1             # and increment its counter
 
-    with open(outfile, "w") as out:
+    if outfile != None:
+        outstream = open(outfile, "w")
+    try:
         for bin in bins:
-            out.write("{}\t{}\n".format(bin[0], bin[1]))
+            outstream.write("{}\t{}\n".format(bin[0], bin[1]))
+    finally:
+        if outfile != None:
+            outstream.close()
     return bins
 
 # Main function and top-level commands
@@ -773,7 +814,8 @@ COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file i
             randomCommand("random", "outfile genesfile nsamples",
                           "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
             statsCommand("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
-            translateCommand("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'.")]
+            translateCommand("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'."),
+            histogramCommand("histogram", "[options] infiles", "generate histogram of MI values from adj files.")]
 
 def findCommand(name):
     global COMMANDS

@@ -30,7 +30,7 @@ COMMANDS = []
 # Utils
 
 def genOpen(filename, mode):
-    """Generalized open() function - works on both regular files and gz files."""
+    """Generalized open() function - works on both regular files and .gz files."""
     (name, ext) = os.path.splitext(filename)
     if ext == ".gz":
         return gzip.open(filename, mode)
@@ -38,11 +38,14 @@ def genOpen(filename, mode):
         return open(filename, mode)
 
 def readLines(filename):
+    """Returns the contents of `filename' as a list of strings, removing
+the trailing return character."""
     with open(filename, "r") as f:
         lines = f.readlines()
-    return [ s.rstrip("\n") for s in lines ]
+    return [ s.rstrip("\n\r") for s in lines ]
 
 def changeExtension(filename, newext):
+    """Returns a new filename obtained by replacing the extension in `filename' with `newext'."""
     (name, ext) = os.path.splitext(filename)
     return name + newext
 
@@ -108,7 +111,9 @@ class toplevelCall():
     # print "    [-s support]    - Only output edges found in at least `support' bootstrap files."
     # print "    [-f fraction]   - Like -s, but determines the support in order to have the specified fraction of edges in output."
     
-# Bootstrap
+#
+# Bootstrap command
+#
 
 class bootstrapCommand(toplevelCall):
     filename = ""
@@ -159,6 +164,9 @@ obtained by bootstrapping its columns. Returns the list of new filenames."""
         
     return outfiles
 
+#
+# Consensus command
+#
 # Consensus reconstruction
 # This part of the program replaces the getconsensusnet.pl script in the
 # Aracne distribution, which has a number of problems.
@@ -210,6 +218,10 @@ class consensusCommand(toplevelCall):
                 self.outfile = arg
             else:
                 self.infiles.append(arg)
+
+        if self.outfile == None or len(self.infiles) == 0:
+            print "The consensus command requires an output file and one or more input files."
+            return False
 
         return True
 
@@ -515,7 +527,9 @@ If `both' is True, only output edges where both genes belong to the list."""
                                         out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                                         addToSeen(seen, hub, gene)
 
+#
 # Stats command
+#
 
 class statsCommand(toplevelCall):
     filenames = None
@@ -623,6 +637,40 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100):
 
 # Main function and top-level commands
 
+class translateCommand(toplevelCall):
+    table = None
+    infile = None
+    outfile = None
+
+    def parse(self, args):
+        nfiles = 0
+        for a in args:
+            if self.table == None:
+                self.table = a
+                nfiles += 1
+            elif self.infile == None:
+                self.infile = a
+                nfiles += 1
+            elif self.outfile == None:
+                self.outfile = a
+                nfiles += 1
+        if nfiles != 3:
+            print "The translate command requires three filenames as arguments: table file, input file, output file."
+            return False
+
+        if not os.path.isfile(self.table):
+            print "File {} does not exist.".format(self.table)
+            return False
+
+        if not os.path.isfile(self.infile):
+            print "File {} does not exist.".format(self.infile)
+            return False
+            
+        return True
+    
+    def run(self):
+        translateFile(self.table, self.infile, self.outfile)
+
 def translateFile(tablefile, infile, outfile):
     table = {}
     with open(tablefile, "r") as f:
@@ -641,11 +689,49 @@ def translateFile(tablefile, infile, outfile):
                     parsed[1] = table[parsed[1]]
                 out.write("\t".join(parsed) + "\n")
 
+#
 # Generate random dataset
+#
+
+class randomCommand(toplevelCall):
+    outfile = None
+    genesfile = None
+    nsamples = None
+
+    def parse(self, args):
+        nargs = 0
+
+        for a in args:
+            if self.outfile == None:
+                self.outfile = a
+                nargs += 1
+            elif self.genesfile == None:
+                self.genesfile = a
+                nargs += 1
+            else:
+                n = ensureInt(a)
+                if n == None:
+                    print "The argument {} should be a number.".format(a)
+                    return False
+                else:
+                    self.nsamples = n
+                    nargs += 1
+        if nargs != 3:
+            print "This command requires three arguments: output file, genes file, number of samples."
+            return False
+
+        if not os.path.isfile(self.genesfile):
+            print "File {} does not exist.".format(self.genesfile)
+            return False
+
+        return True
+    
+    def run(self):
+        doRandomDataset(self.outfile, self.genesfile, self.nsamples)
 
 def doRandomDataset(outfile, genesfile, nsamples):
     with open(outfile, "w") as out:
-        out.write("GeneId\tGeneName")
+        out.write("GeneId\tGeneName\n")
         for i in range(0, nsamples):
             out.write("\tSample{}".format(i+1))
         out.write("\n")
@@ -663,8 +749,11 @@ def doRandomDataset(outfile, genesfile, nsamples):
 # Main
 
 def main():
-    if len(sys.argv) == 1:
+    argc = len(sys.argv)
+    if argc == 1:
         return usage()
+    elif argc == 2:
+        return usage(sys.argv[1])
 
     name = sys.argv[1]
     command = findCommand(name)
@@ -677,38 +766,14 @@ def main():
     else:
         return usage(name)
 
-
-    # if len(sys.argv) == 2:
-    #     return usage(command)
-
-    # elif command == "consensus":
-    #     parsed = consensusArgs(sys.argv[2:])
-    #     runConsensus(parsed.outfile, parsed.infiles, parsed)
-    # elif command == "bootstrap":
-    #     bootstrapData(sys.argv[2], int(sys.argv[3]))
-    # elif command == "extract":
-    #     parsed = extractArgs(sys.argv[2:])
-    #     extractGeneSubset(parsed.adjfile, parsed.outfile, parsed.geneslist, both=parsed.both)
-    # elif command == "stats":
-    #     doAracneStats(sys.argv[2:])
-    # elif command == "translate":
-    #     tablefile = sys.argv[2]
-    #     infile = sys.argv[3]
-    #     outfile = sys.argv[4]
-    #     translateFile(tablefile, infile, outfile)
-    # elif command == "random":
-    #     doRandomDataset(sys.argv[2], sys.argv[3], int(sys.argv[4]))
-    # else:
-    #     usage()
-
 COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file into `rounds' new files."),
             consensusCommand("consensus", "[options] outfile infiles...", "generate a consensus network from multiple .adj files."),
-            toplevelCall("extract", "[-a] adj outfile genesfile",
-                         "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
-            toplevelCall("random", "outfile genesfile nsamples",
-                         "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
+            extractCommand("extract", "[-a] adj outfile genesfile",
+                           "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
+            randomCommand("random", "outfile genesfile nsamples",
+                          "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
             statsCommand("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
-            toplevelCall("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'.")]
+            translateCommand("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'.")]
 
 def findCommand(name):
     global COMMANDS

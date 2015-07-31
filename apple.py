@@ -82,11 +82,10 @@ class toplevelCall():
     shortdesc = ""              # short description of command
     longdesc = ""               # long description of command (multi-line)
 
-    def __init__(self, name, argdesc, shortdesc, longdesc=""):
+    def __init__(self, name, argdesc, shortdesc):
         self.name = name
         self.argdesc = argdesc
         self.shortdesc = shortdesc
-        self.longdesc = longdesc
 
     def parse(self, args):
         """Parse the command-line arguments `args' for this command."""
@@ -118,6 +117,13 @@ class toplevelCall():
 class bootstrapCommand(toplevelCall):
     filename = ""
     nrounds = 0
+    longdesc = """
+This command takes as input a file containing gene expression values, and generates `rounds' new files through a bootstrap procedure.
+
+The input file is assumed to have genes in the rows and samples in the columns. The first two columns are reserved for gene identifiers. All remaining columns contain data for different samples.
+
+Each output file will have the same number of columns as the input file, chosen at random from the input file, with replacement. Therefore a column from the input file may appear more than once (or not at all) in the output file.
+"""
 
     def parse(self, args):
         if len(args) != 2:
@@ -180,7 +186,16 @@ class consensusCommand(toplevelCall):
     bonf = True
     support = None
     fraction = None
-    
+    longdesc = """
+This command generates a consensus network from a list of .adj files (usually generated through a bootstrap procedure). The following options are available:
+  [-c countsfile] - write a tab-delimited file with two columns: support, number of occurrences of support.
+  [-d datafile]   - write a tab-delimited file with five columns: hub, gene, support, sum of MI, P-value.
+  [-p pval]       - Use the specified P-value to filter edges in output (with Bonferroni correction).
+  [-nb]           - If specified, disables Bonferroni correction (used with -p).
+  [-s support]    - Only output edges found in at least `support' bootstrap files.
+  [-f fraction]   - Like -s, but determines the support in order to have the specified fraction of edges in output.
+"""
+
     def parse(self, args):
         self.outfile = None
         self.infiles = []
@@ -460,6 +475,16 @@ class extractCommand(toplevelCall):
     genesfile = None
     geneslist = None
     both = False
+    longdesc = """
+This command extracts the genes specified in `genesfile' from the .adj file in input and writes their edges to `outfile'.
+
+File `genesfile' should have a single column containing gene identifiers (one per line).
+
+The output file is a tab-delimited file with three columns: hub gene, target gene, MI. The hub gene is always one of the
+genes specified in `genesfile', while MI is the mutual information of the edge connecting it to the target gene.
+
+If the -a option is specified, both the hub gene and the target gene are required to be in `genesfile'.
+"""
 
     def parse(self, args):
         for arg in args:
@@ -506,7 +531,7 @@ If `both' is True, only output edges where both genes belong to the list."""
     seen = {}
     with open(outfile, "w") as out:
         out.write("#Gene1\tGene2\tMI\n")
-        with open(infile, "r") as f:
+        with genOpen(infile, "r") as f:
             for line in f:
                 if line[0] != ">":
                     parsed = line.rstrip("\n").split("\t")
@@ -597,24 +622,41 @@ class histogramCommand(toplevelCall):
     infile = None
     outfile = None
     mifile = None
+    summi = False
     nbins = 100
+    low = None
+    high = None
+    overflow = False
 
     def parse(self, args):
         next = None
 
         for a in args:
-            if a in ["-m", "-n", "-o"]:
+            if a in ["-m", "-n", "-o", "-r"]:
                 next = a
             elif next == "-m":
                 self.mifile = a
+                next = None
             elif next == "-n":
                 n = ensureInt(a)
                 if n == None:
                     print "The value of -n, {}, should be a number.".format(a)
                     return False
                 self.nbins = n
+                next = None
             elif next == "-o":
-                self.outfile == a
+                self.outfile = a
+                next = None
+            elif next == "-r":
+                if self.low == None:
+                    self.low = ensureFloat(a)
+                else:
+                    self.high = ensureFloat(a)
+                    next = None
+            elif a == "-s":
+                self.summi = True
+            elif a == "-v":
+                self.overflow = True
             else:
                 self.infile = a
 
@@ -625,29 +667,51 @@ class histogramCommand(toplevelCall):
         return True
 
     def run(self):
-        doHistogram(self.infile, self.outfile, mifile=self.mifile, nbins=self.nbins)
+        doMIhistogram(self.infile, self.outfile, mifile=self.mifile, nbins=self.nbins, summi=self.summi,
+                      low=self.low, high=self.high, overflow=self.overflow)
 
-def doMIhistogram(filename, outfile, mifile=None, nbins=100):
+def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=None, high=None, overflow=False):
     mis = []
     bins = [None for i in range(nbins+1)]
     outstream = sys.stdout
+
+    if summi:
+        print "Computing histogram of sum of MI values for each row."
+    else:
+        print "Computing histogram of all MI values."
+    if outfile:
+        print "Writing histogram to file {}.".format(outfile)
 
     with genOpen(filename, "r") as f:
         for line in f:
             if not line[0] == ">":
                 parsed = line.rstrip("\n").split("\t")
-                for i in range(2, len(parsed), 2):
-                    mi = float(parsed[i])
-                    mis.append(mi)
+                if summi:
+                    tot = 0
+                    for i in range(2, len(parsed), 2):
+                        mi = float(parsed[i])
+                        tot += mi
+                    mis.append(tot)
+                else:
+                    for i in range(2, len(parsed), 2):
+                        mi = float(parsed[i])
+                        mis.append(mi)
     mis.sort()
-    print "MI range: {} - {}".format(mis[0], mis[-1])
+    print "Actual MI range: {} - {}".format(mis[0], mis[-1])
     if mifile != None:
         with open(mifile, "w") as out:
             for m in mis:
                 out.write(str(m) + "\n")
 
-    minmi = mis[0]
-    maxmi = mis[-1]
+    if low == None:
+        minmi = mis[0]
+    else:
+        minmi = low
+    if high == None:
+        maxmi = mis[-1]
+    else:
+        maxmi = high
+    print "Histogram range: {} - {}".format(minmi, maxmi)
     step = (maxmi - minmi) / nbins
     limit = minmi + step
     for i in range(nbins+1):
@@ -656,14 +720,21 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100):
 
     this = 0
     bin = bins[this]
+    terminate = False
+
     for m in mis:
         while m >= bin[0]:       # if we are outside the current bin
-            this += 1           # move to next bin
-            if this == nbins+1:
-                print "end of bins reached, m={}".format(m)
-                print bins
-                return
+            if this == nbins:
+                if overflow:
+                    pass
+                else:
+                    terminate = True
+                break
+            else:
+                this += 1           # move to next bin
             bin = bins[this]    # until we find the one that contains this mi
+        if terminate:
+            break
         bin[1] += 1             # and increment its counter
 
     if outfile != None:
@@ -787,6 +858,87 @@ def doRandomDataset(outfile, genesfile, nsamples):
                     out.write("\t{}".format(numpy.random.negative_binomial(r, p)))
                 out.write("\n")
 
+# Filter command
+
+class filterCommand(toplevelCall):
+    threshold = None
+    total = False
+    infile = None
+    outfile = None
+
+    def parse(self, args):
+        next = ""
+        for a in args:
+            if a in ["-o"]:
+                next = a
+            elif next == "-o":
+                self.outfile =a
+                next = ""
+            elif a == "-t":
+                self.total = True
+            elif self.infile == None:
+                self.infile = a
+            elif self.threshold == None:
+                self.threshold = ensureFloat(a)
+        if self.infile == None:
+            print "This command requires an input file."
+            return False
+        if self.threshold == None:
+            print "This command requires an MI threshold."
+            return False
+        return True
+
+    def run(self):
+        doFilter(self.infile, self.threshold, outfile=self.outfile, total=self.total)
+
+def doFilter(infile, threshold, outfile=None, total=False):
+    out = sys.stdout
+    nin = 0
+    nout = 0
+    nrows = 0
+
+    if outfile != None:
+        out = open(outfile, "w")
+    try:
+        with genOpen(infile, "r") as f:
+            for line in f:
+                if line[0] == ">":
+                    out.write(line)
+                else:
+                    parsed = line.rstrip("\n").split("\t")
+                    hub = parsed[0]
+
+                    if total:
+                        nin += 1
+                        tot = 0
+                        for i in range(2, len(parsed), 2):
+                            tot += float(parsed[i])
+                        if tot >= threshold:
+                            out.write(line)
+                            nout += 1
+                    else:
+                        towrite = True
+                        for i in range(1, len(parsed), 2):
+                            gene = parsed[i]
+                            mi = float(parsed[i+1])
+                            nin += 1
+                            if mi >= threshold:
+                                if towrite:
+                                    out.write(hub)
+                                    nrows += 1
+                                    towrite = False
+                                out.write("\t{}\t{}".format(gene, mi))
+                                nout += 1
+                        if not towrite:
+                            out.write("\n")
+    finally:
+        if outfile != None:
+            out.close()
+    if total:
+        print "{} hub genes seen, {} written.".format(nin, nout)
+    else:
+        print "{} edges seen, {} edges written for {} hub genes.".format(nin, nout, nrows)
+
 # Main
 
 def main():
@@ -815,7 +967,8 @@ COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file i
                           "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
             statsCommand("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
             translateCommand("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'."),
-            histogramCommand("histogram", "[options] infiles", "generate histogram of MI values from adj files.")]
+            histogramCommand("histogram", "[options] infiles", "generate histogram of MI values from adj files."),
+            filterCommand("filter", "[options] infile threshold", "filter an adj file keeping only edges with MI over the threshold.")]
 
 def findCommand(name):
     global COMMANDS
@@ -841,6 +994,8 @@ def usage(what=None):
             usage()
         else:
             e.write("Usage: apple.py {} {} - {}\n".format(c.name, c.argdesc, c.shortdesc))
+            if c.longdesc != "":
+                e.write(c.longdesc)
             
 if __name__ == "__main__":
     sys.stderr.write("apple.py - Aracne Processing PipeLine Extensions.\n\n")

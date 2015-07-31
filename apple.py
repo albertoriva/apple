@@ -82,7 +82,7 @@ class toplevelCall():
     shortdesc = ""              # short description of command
     longdesc = ""               # long description of command (multi-line)
 
-    def __init__(self, name, argdesc, shortdesc, longdesc="", func=None):
+    def __init__(self, name, argdesc, shortdesc, longdesc=""):
         self.name = name
         self.argdesc = argdesc
         self.shortdesc = shortdesc

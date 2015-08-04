@@ -474,6 +474,8 @@ class extractCommand(toplevelCall):
     outfile = None
     genesfile = None
     geneslist = None
+    genesfile2 = None
+    geneslist2 = None
     both = False
     longdesc = """
 This command extracts the genes specified in `genesfile' from the .adj file in input and writes their edges to `outfile'.
@@ -494,18 +496,22 @@ If the -a option is specified, both the hub gene and the target gene are require
                 self.adjfile = arg
             elif self.outfile == None:
                 self.outfile = arg
-            else:
+            elif self.genesfile == None:
                 self.genesfile = arg
+            else:
+                self.genesfile2 = arg
 
         if (self.adjfile == None) or (self.outfile == None) or (self.genesfile == None):
             print "This command requires three filenames as arguments."
             return False
 
         self.geneslist = readLines(self.genesfile)
+        if self.genesfile2 != None:
+            self.geneslist2 = readLines(self.genesfile2)
         return True
 
     def run(self):
-        extractGeneSubset(self.adjfile, self.outfile, self.geneslist, both=self.both)
+        extractGeneSubset(self.adjfile, self.outfile, self.geneslist, both=self.both, genes2=self.geneslist2)
 
 def addToSeen(seen, g1, g2):
     """Record the fact that an edge connecting `g1' and `g2' was seen in the current network."""
@@ -521,14 +527,20 @@ def wasNotSeen(seen, g1, g2):
     else:
         return True
 
-def extractGeneSubset(infile, outfile, genes, both=False):
+def extractGeneSubset(infile, outfile, genes, both=False, genes2=None):
     """Extract only the edges where one of the two genes belongs to the `genes' list
 from adj file `infile' and write them to `outfile' in tab-delimited format (g1, g2, mi).
 Also filters out symmetrical edges (ie, each pair is written only once regardless of order).
 If `both' is True, only output edges where both genes belong to the list."""
 
-    print "Extracting {} genes from {} (both={})".format(len(genes), infile, both)
     seen = {}
+    extracted = 0
+    paired = (genes2 != None)
+    if paired:
+        print "Extracting {} and {} genes from {} (paired mode)".format(len(genes), len(genes2), infile)
+    else:
+        print "Extracting {} genes from {} (both={})".format(len(genes), infile, both)
+
     with open(outfile, "w") as out:
         out.write("#Gene1\tGene2\tMI\n")
         with genOpen(infile, "r") as f:
@@ -536,13 +548,31 @@ If `both' is True, only output edges where both genes belong to the list."""
                 if line[0] != ">":
                     parsed = line.rstrip("\n").split("\t")
                     hub = parsed[0]
-                    if hub in genes:
+
+                    if paired:
+                        found = False
+                        if hub in genes:
+                            found = 1
+                        elif hub in genes2:
+                            found = 2
+                        if found:
+                            for i in range(1, len(parsed), 2):
+                                gene = parsed[i]
+                                if ((found == 1) and (gene in genes2)) or ((found == 2) and (gene in genes)):
+                                    if wasNotSeen(seen, gene, hub):
+                                        out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
+                                        addToSeen(seen, hub, gene)
+                                        extracted += 1
+                            
+                    elif hub in genes:
                         for i in range(1, len(parsed), 2):
                             gene = parsed[i]
                             if (both == False) or (gene in genes):
                                 if wasNotSeen(seen, gene, hub):
                                     out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                                     addToSeen(seen, hub, gene)
+                                        extracted += 1
+
                     else:
                         if both == False:
                             for i in range(1, len(parsed), 2):
@@ -551,6 +581,9 @@ If `both' is True, only output edges where both genes belong to the list."""
                                     if wasNotSeen(seen, gene, hub):
                                         out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                                         addToSeen(seen, hub, gene)
+                                        extracted += 1
+    print "{} edges extracted.".format(extracted)
+
 
 #
 # Stats command
@@ -810,26 +843,31 @@ class randomCommand(toplevelCall):
     genesfile = None
     nsamples = None
 
+# apple.py random infile -o outfile -nb nsamples   - random data using negative binomial
+# apple.py random infile -o outfile                - shuffling of original data
+
     def parse(self, args):
         nargs = 0
+        next = ""
 
         for a in args:
-            if self.outfile == None:
+            if a in ["-o", "-nb"]:
+                next = a
+            elif next == "-o":
                 self.outfile = a
-                nargs += 1
-            elif self.genesfile == None:
-                self.genesfile = a
-                nargs += 1
-            else:
+                next = ""
+            elif next == "-nb":
                 n = ensureInt(a)
                 if n == None:
                     print "The argument {} should be a number.".format(a)
                     return False
                 else:
                     self.nsamples = n
-                    nargs += 1
-        if nargs != 3:
-            print "This command requires three arguments: output file, genes file, number of samples."
+            else:
+                self.genesfile = a
+
+        if self.genesfile == None:
+            print "This command requires an input file."
             return False
 
         if not os.path.isfile(self.genesfile):
@@ -839,9 +877,13 @@ class randomCommand(toplevelCall):
         return True
     
     def run(self):
-        doRandomDataset(self.outfile, self.genesfile, self.nsamples)
+        if self.nsamples:
+            doRandomDataset(self.genesfile, self.nsamples, outfile=self.outfile)
+        else:
+            doShuffledDataset(self.genesfile, outfile=self.outfile)
 
-def doRandomDataset(outfile, genesfile, nsamples):
+def doRandomDataset(genesfile, nsamples, outfile=None):
+    print "Generating random dataset with {} samples.".format(nsamples)
     with open(outfile, "w") as out:
         out.write("GeneId\tGeneName\n")
         for i in range(0, nsamples):
@@ -857,6 +899,27 @@ def doRandomDataset(outfile, genesfile, nsamples):
                 for i in range(0, nsamples):
                     out.write("\t{}".format(numpy.random.negative_binomial(r, p)))
                 out.write("\n")
+
+def doShuffledDataset(infile, outfile=None):
+    print "Shuffling dataset {}.".format(infile)
+    out = sys.stdout
+    if outfile != None:
+        print "Writing dataset to file {}.".format(outfile)
+        out = open(outfile, "w")
+
+    try:
+        with open(infile, "r") as f:
+            for line in f:
+                parsed = line.rstrip("\n").split("\t")
+                values = parsed[2:]
+                random.shuffle(values)
+                out.write("{}\t{}".format(parsed[0], parsed[1]))
+                for x in values:
+                    out.write("\t{}".format(x))
+                out.write("\n")
+    finally:
+        if outfile != None:
+            out.close()
 
 # Filter command
 
@@ -961,7 +1024,7 @@ def main():
 
 COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file into `rounds' new files."),
             consensusCommand("consensus", "[options] outfile infiles...", "generate a consensus network from multiple .adj files."),
-            extractCommand("extract", "[-a] adj outfile genesfile",
+            extractCommand("extract", "[-a] adj outfile genesfile [genesfile2]",
                            "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
             randomCommand("random", "outfile genesfile nsamples",
                           "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),

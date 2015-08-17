@@ -571,7 +571,7 @@ If `both' is True, only output edges where both genes belong to the list."""
                                 if wasNotSeen(seen, gene, hub):
                                     out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                                     addToSeen(seen, hub, gene)
-                                        extracted += 1
+                                    extracted += 1
 
                     else:
                         if both == False:
@@ -1002,6 +1002,93 @@ def doFilter(infile, threshold, outfile=None, total=False):
     else:
         print "{} edges seen, {} edges written for {} hub genes.".format(nin, nout, nrows)
 
+# Network -> adj conversion
+
+class convertCommand(toplevelCall):
+    infile = None
+    outfile = None
+    operator = None
+    support = 0
+
+    def parse(self, args):
+        next = ""
+        nargs = 0
+        for a in args:
+            if next == "-s":
+                self.support = ensureInt(a)
+                next = ""
+            elif a in ["-s"]:
+                next = a
+            elif nargs == 0:
+                self.operator = a
+                nargs += 1
+            elif nargs == 1:
+                self.infile = a
+                nargs += 1
+            elif nargs == 2:
+                self.outfile = a
+                nargs += 1
+        if nargs < 3:
+            print "This command requires three arguments."
+            return False
+        return True
+
+    def run(self):
+        op = self.operator
+        if op == "na":
+            networkToAdj(self.infile, self.outfile, support=self.support)
+        elif op == "nc":
+            networkToCytoscape(self.infile, self.outfile, support=self.support)
+        elif op == "ca":
+            cytoscapeToAdj(self.infile, self.outfile)
+        else:
+            print "Operator should be one of: na, nc, ca."
+
+def networkToAdj(infile, outfile, support=0):
+    current = ""
+    with open(outfile, "w") as out:
+        with genOpen(infile, "r") as f:
+            for line in f:
+                parsed = line.rstrip("\n").split("\t")
+                hub = parsed[0]
+                if hub != current:
+                    if current != "":
+                        out.write("\n")
+                    out.write("{}".format(hub))
+                    current = hub
+                supp = int(parsed[2])
+                if supp >= support:
+                    out.write("\t{}\t{}".format(parsed[1], float(parsed[3]) / supp))
+        out.write("\n")
+
+def cytoscapeToAdj(infile, outfile):
+    current = ""
+    hdr = True
+    with open(outfile, "w") as out:
+        with genOpen(infile, "r") as f:
+            for line in f:
+                if hdr:
+                    hdr = False
+                else:
+                    parsed = line.rstrip("\n").split("\t")
+                    hub = parsed[0]
+                    if hub != current:
+                        if current != "":
+                            out.write("\n")
+                        out.write("{}".format(hub))
+                        current = hub
+                    out.write("\t{}\t{}".format(parsed[1], parsed[2]))
+        out.write("\n")
+
+def networkToCytoscape(infile, outfile, support=0):
+    with open(outfile, "w") as out:
+        with genOpen(infile, "r") as f:
+            for line in f:
+                parsed = line.rstrip("\n").split("\t")
+                supp = int(parsed[2])
+                if supp >= support:
+                    out.write("{}\t{}\t{}\n".format(parsed[0], parsed[1], float(parsed[3]) / supp))
+                
 # Main
 
 def main():
@@ -1031,7 +1118,8 @@ COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file i
             statsCommand("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
             translateCommand("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'."),
             histogramCommand("histogram", "[options] infiles", "generate histogram of MI values from adj files."),
-            filterCommand("filter", "[options] infile threshold", "filter an adj file keeping only edges with MI over the threshold.")]
+            filterCommand("filter", "[options] infile threshold", "filter an adj file keeping only edges with MI over the threshold."),
+            convertCommand("convert", "[options] op infile outfile", "convert `infile' to a different format according to operator `op' and write the results to `outfile'.")]
 
 def findCommand(name):
     global COMMANDS

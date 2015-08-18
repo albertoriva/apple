@@ -24,6 +24,11 @@ import numpy.random
 ## Finish -f and -c arguments
 ## Add command for table stats - Done
 ## Validate arguments for top-level commands
+## Complete documentation
+## Multiple files for translate command
+## Command for COMPARE-MI-HISTOGRAMS
+## Histogram command should return range to stdout
+## Clean up output (messages to stderr)
 
 COMMANDS = []
 
@@ -1046,20 +1051,28 @@ class convertCommand(toplevelCall):
 
 def networkToAdj(infile, outfile, support=0):
     current = ""
+    genes = []
     with open(outfile, "w") as out:
         with genOpen(infile, "r") as f:
             for line in f:
                 parsed = line.rstrip("\n").split("\t")
                 hub = parsed[0]
                 if hub != current:
-                    if current != "":
+                    if len(genes) > 0:
+                        out.write("{}".format(hub))
+                        for g in genes:
+                            out.write("\t{}\t{}".format(g[0], g[1]))
                         out.write("\n")
-                    out.write("{}".format(hub))
-                    current = hub
+                        current = hub
+                        genes = []
                 supp = int(parsed[2])
                 if supp >= support:
-                    out.write("\t{}\t{}".format(parsed[1], float(parsed[3]) / supp))
-        out.write("\n")
+                    genes.append((parsed[1], float(parsed[3]) / supp))
+        if len(genes) > 0:
+            out.write("{}".format(hub))
+            for g in genes:
+                out.write("\t{}\t{}".format(g[0], g[1]))
+            out.write("\n")
 
 def cytoscapeToAdj(infile, outfile):
     current = ""

@@ -30,9 +30,12 @@ import numpy.random
 ## Histogram command should return range to stdout
 ## Clean up output (messages to stderr)
 
-COMMANDS = []
+# COMMANDS = []
 
 # Utils
+
+def message(string, *args):
+    sys.stderr.write(string.format(*args) + "\n")
 
 def genOpen(filename, mode):
     """Generalized open() function - works on both regular files and .gz files."""
@@ -87,11 +90,6 @@ class toplevelCall():
     shortdesc = ""              # short description of command
     longdesc = ""               # long description of command (multi-line)
 
-    def __init__(self, name, argdesc, shortdesc):
-        self.name = name
-        self.argdesc = argdesc
-        self.shortdesc = shortdesc
-
     def parse(self, args):
         """Parse the command-line arguments `args' for this command."""
         pass
@@ -122,6 +120,10 @@ class toplevelCall():
 class bootstrapCommand(toplevelCall):
     filename = ""
     nrounds = 0
+
+    name = "bootstrap"
+    argdesc = "filename rounds"
+    shortdesc= "bootstrap a file into `rounds' new files."
     longdesc = """
 This command takes as input a file containing gene expression values, and generates `rounds' new files through a bootstrap procedure.
 
@@ -191,6 +193,10 @@ class consensusCommand(toplevelCall):
     bonf = True
     support = None
     fraction = None
+
+    name = "consensus"
+    argdesc = "[options] outfile infiles..."
+    shortdesc = "generate a consensus network from multiple .adj files."
     longdesc = """
 This command generates a consensus network from a list of .adj files (usually generated through a bootstrap procedure). The following options are available:
   [-c countsfile] - write a tab-delimited file with two columns: support, number of occurrences of support.
@@ -482,34 +488,45 @@ class extractCommand(toplevelCall):
     genesfile2 = None
     geneslist2 = None
     both = False
+
+    name = "extract"
+    argdesc = "[-a] [-o outfile] adj outfile genesfile [genesfile2]"
+    shortdesc = "extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format."
     longdesc = """
 This command extracts the genes specified in `genesfile' from the .adj file in input and writes their edges to `outfile'.
 
 File `genesfile' should have a single column containing gene identifiers (one per line).
 
-The output file is a tab-delimited file with three columns: hub gene, target gene, MI. The hub gene is always one of the
-genes specified in `genesfile', while MI is the mutual information of the edge connecting it to the target gene.
+The output (sent to standard output, or to a file specified with the -o option) is tab-delimited with three columns: 
+hub gene, target gene, MI. The hub gene is always one of the genes specified in `genesfile', while MI is the mutual 
+information of the edge connecting it to the target gene.
 
 If the -a option is specified, both the hub gene and the target gene are required to be in `genesfile'.
 """
 
     def parse(self, args):
+        next = ""
         for arg in args:
-            if arg == "-a":
+            if next == "-o":
+                self.outfile = arg
+                next = ""
+            elif arg == "-o":
+                next = "-o"
+            elif arg == "-a":
                 self.both = True
             elif self.adjfile == None:
                 self.adjfile = arg
-            elif self.outfile == None:
-                self.outfile = arg
             elif self.genesfile == None:
                 self.genesfile = arg
             else:
                 self.genesfile2 = arg
 
-        if (self.adjfile == None) or (self.outfile == None) or (self.genesfile == None):
-            print "This command requires three filenames as arguments."
+        if self.adjfile == None:
+            print "The adjfile argument is required."
             return False
-
+        if self.genesfile == None:
+            print "The genesfile argument is required."
+            return False
         self.geneslist = readLines(self.genesfile)
         if self.genesfile2 != None:
             self.geneslist2 = readLines(self.genesfile2)
@@ -542,11 +559,15 @@ If `both' is True, only output edges where both genes belong to the list."""
     extracted = 0
     paired = (genes2 != None)
     if paired:
-        print "Extracting {} and {} genes from {} (paired mode)".format(len(genes), len(genes2), infile)
+        message("Extracting {} and {} genes from {} (paired mode)", len(genes), len(genes2), infile)
     else:
-        print "Extracting {} genes from {} (both={})".format(len(genes), infile, both)
+        message("Extracting {} genes from {} (both={})", len(genes), infile, both)
 
-    with open(outfile, "w") as out:
+    if outfile == None:
+        out = sys.stdout
+    else:
+        out = open(outfile, "w")
+    try:
         out.write("#Gene1\tGene2\tMI\n")
         with genOpen(infile, "r") as f:
             for line in f:
@@ -587,7 +608,10 @@ If `both' is True, only output edges where both genes belong to the list."""
                                         out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                                         addToSeen(seen, hub, gene)
                                         extracted += 1
-    print "{} edges extracted.".format(extracted)
+    finally:
+        if outfile != None:
+            out.close()
+    message("{} edges extracted.".extracted)
 
 
 #
@@ -597,6 +621,17 @@ If `both' is True, only output edges where both genes belong to the list."""
 class statsCommand(toplevelCall):
     filenames = None
     outfile = None
+
+    name = "stats"
+    argdesc = "[-o outfile] filenames..."
+    shortdesc = "print statistics on all supplied filenames (in adj format)."
+    longdesc = """
+This command prints statistics on all the .adj files supplied as arguments. For each file, the command
+prints: the number of hub genes, the total number of edges, and the average number of edges per hub.
+
+Output is in tab-delimited format, and is written to standard output or to the file specified with the
+-o option.
+"""
 
     def parse(self, args):
         self.filenames = []
@@ -666,6 +701,19 @@ class histogramCommand(toplevelCall):
     high = None
     overflow = False
 
+    name = "histogram"
+    argdesc = "[options] infile"
+    shortdesc = "generate histogram of MI values from adj files."
+    longdesc = """This command computes the histogram of MI values for the edges in the specified .adj file.
+The following options are available:
+  [-o outfile] - write output to `outfile' instead of standard output.
+  [-n nbins]   - Specifiy number of bins to use (100 by default).
+  [-r min max] - Only consider values between `min' and `max' (by default, the whole range of MIs is used).
+  [-v]         - If specified, values higher than `max' are added to the last bin.
+  [-s]         - If specified, the histogram is computed on the sum of the MIs of each row.
+  [-m mifile]  - Write all distinct MI values to `mifile'.
+"""
+
     def parse(self, args):
         next = None
 
@@ -714,11 +762,11 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
     outstream = sys.stdout
 
     if summi:
-        print "Computing histogram of sum of MI values for each row."
+        message("Computing histogram of sum of MI values for each row.")
     else:
-        print "Computing histogram of all MI values."
+        message("Computing histogram of all MI values.")
     if outfile:
-        print "Writing histogram to file {}.".format(outfile)
+        message("Writing histogram to file {}.", outfile)
 
     with genOpen(filename, "r") as f:
         for line in f:
@@ -735,7 +783,7 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
                         mi = float(parsed[i])
                         mis.append(mi)
     mis.sort()
-    print "Actual MI range: {} - {}".format(mis[0], mis[-1])
+    message("Actual MI range: {} - {}", mis[0], mis[-1])
     if mifile != None:
         with open(mifile, "w") as out:
             for m in mis:
@@ -749,7 +797,7 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
         maxmi = mis[-1]
     else:
         maxmi = high
-    print "Histogram range: {} - {}".format(minmi, maxmi)
+    message("Histogram range: {} - {}", minmi, maxmi)
     step = (maxmi - minmi) / nbins
     limit = minmi + step
     for i in range(nbins+1):
@@ -789,55 +837,66 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
 
 class translateCommand(toplevelCall):
     table = None
-    infile = None
-    outfile = None
+    infiles = []
+    outfiles = []
+
+    name = "translate"
+    argdesc = "table infile outfile ..."
+    shortdesc = "translate identifiers in `infile' writing them to `outfile'."
+    longdesc = """
+This command converts the gene identifiers in `infile' according to a supplied translation table.
+Gene identifiers are looked for in the first two columns of each input file.
+File `table' should contain two columns: original gene name, converted name. 
+
+Multiple pairs of input and output files may be specified on the command line. E.g.:
+
+  apple.py translate table.txt in1.csv out1.csv in2.csv out2.csv in3.csv out3.csv
+"""
 
     def parse(self, args):
-        nfiles = 0
-        for a in args:
-            if self.table == None:
-                self.table = a
-                nfiles += 1
-            elif self.infile == None:
-                self.infile = a
-                nfiles += 1
-            elif self.outfile == None:
-                self.outfile = a
-                nfiles += 1
-        if nfiles != 3:
-            print "The translate command requires three filenames as arguments: table file, input file, output file."
+        nargs = len(args)
+        if nargs > 1 and (nargs % 2 == 1):
+            self.table = args[0]
+            for i in range(1, len(args), 2):
+                self.infiles.append(args[i])
+                self.outfiles.append(args[i+1])
+        else:
+            message("The translate command requires at least three filenames as arguments: table file, input file, output file.")
             return False
 
         if not os.path.isfile(self.table):
-            print "File {} does not exist.".format(self.table)
+            message("Translation table `{}' does not exist.", self.table)
             return False
 
-        if not os.path.isfile(self.infile):
-            print "File {} does not exist.".format(self.infile)
-            return False
-            
         return True
     
     def run(self):
-        translateFile(self.table, self.infile, self.outfile)
+        table = {}
+        with open(tablefile, "r") as f:
+            for line in f:
+                parsed = line.rstrip("\n").split("\t")
+                if parsed[0] != "\\N":
+                    table[parsed[0]] = parsed[1]
+        message("Translation table loaded, {} genes.", len(table))
+        for i in range(len(self.infiles)):
+            translateFile(table, self.infiles[i], self.outfiles[i])
 
-def translateFile(tablefile, infile, outfile):
-    table = {}
-    with open(tablefile, "r") as f:
-        for line in f:
-            parsed = line.rstrip("\n").split("\t")
-            if parsed[0] != "\\N":
-                table[parsed[0]] = parsed[1]
-    print "Table loaded, {} genes.".format(len(table))
+def translateFile(table, infile, outfile):
+    nseen = 0
+    nfound = 0
     with open(outfile, "w") as out:
         with open(infile, "r") as f:
             for line in f:
+                nseen += 1
                 parsed = line.rstrip("\n").split("\t")
                 if parsed[0] in table:
                     parsed[0] = table[parsed[0]]
+                    nfound += 1
                 if parsed[1] in table:
                     parsed[1] = table[parsed[1]]
+                    nfound +=1
                 out.write("\t".join(parsed) + "\n")
+    message("{}: {} rows, {} identifiers translated", infile, nseen, nfound)
 
 #
 # Generate random dataset
@@ -848,6 +907,22 @@ class randomCommand(toplevelCall):
     genesfile = None
     nsamples = None
 
+    name = "random"
+    argdesc = "[-o outfile] [-nb nsamples] genesfile"
+    shortdesc = "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."
+    longdesc = """
+This command generates a simulated gene expression dataset, using one of two different methods:
+
+  If -nb is specified, the program will generate `nsamples' values for each gene listed in the first 
+  column of file `genesfile', using a negative binomial distribution. The output file will have a
+  number of columns equal to nsamples+2, with the first two columns containing the gene name.
+
+  Otherwise, the expression values in `genesfile' (all values in the row except for the first two)
+  will be shuffled.
+
+Output will be written to standard output or to the file specified with the -o option.
+"""
+    
 # apple.py random infile -o outfile -nb nsamples   - random data using negative binomial
 # apple.py random infile -o outfile                - shuffling of original data
 
@@ -934,6 +1009,18 @@ class filterCommand(toplevelCall):
     infile = None
     outfile = None
 
+    name = "filter"
+    argdesc = "[options] infile threshold"
+    shortdesc = "filter an adj file keeping only edges with MI over the threshold."
+    longdesc = """
+This command writes a new .adj file containing only the edges with an MI value over
+the specified `threshold'. The following options are available:
+
+  [-o outfile] - write output to `outfile' instead of standard output.
+  [-t]         - apply the threshold to the sum of all MI values for a hub, and write
+                 the whole line if successful.
+"""
+
     def parse(self, args):
         next = ""
         for a in args:
@@ -1014,6 +1101,17 @@ class convertCommand(toplevelCall):
     outfile = None
     operator = None
     support = 0
+
+    name = "convert"
+    argdesc = "[options] op infile outfile"
+    shortdesc = "convert `infile' to a different format according to operator `op' and write the results to `outfile'."
+    longdesc = """
+This command converts between different file formats, according to the specified `op'. `op' can be one of:
+
+  na - convert from networkData format to adj 
+  nc - convert from networkData format to cytoscape
+  ca - convert from cytoscape format to adj
+"""
 
     def parse(self, args):
         next = ""
@@ -1122,44 +1220,41 @@ def main():
     else:
         return usage(name)
 
-COMMANDS = [bootstrapCommand("bootstrap", "filename rounds", "bootstrap a file into `rounds' new files."),
-            consensusCommand("consensus", "[options] outfile infiles...", "generate a consensus network from multiple .adj files."),
-            extractCommand("extract", "[-a] adj outfile genesfile [genesfile2]",
-                           "extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format."),
-            randomCommand("random", "outfile genesfile nsamples",
-                          "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."),
-            statsCommand("stats", "filenames...", "print statistics on all supplied filenames (in adj format)."),
-            translateCommand("translate", "table infile outfile", "translate identifiers in `infile' writing them to `outfile'."),
-            histogramCommand("histogram", "[options] infiles", "generate histogram of MI values from adj files."),
-            filterCommand("filter", "[options] infile threshold", "filter an adj file keeping only edges with MI over the threshold."),
-            convertCommand("convert", "[options] op infile outfile", "convert `infile' to a different format according to operator `op' and write the results to `outfile'.")]
+COMMANDS = {"bootstrap": bootstrapCommand(),
+            "consensus": consensusCommand(),
+            "extract": extractCommand(), 
+            "stats": statsCommand(),
+            "histogram": histogramCommand(),
+            "random": randomCommand(),
+            "translate": translateCommand(),
+            "filter": filterCommand(),
+            "convert": convertCommand()}
 
 def findCommand(name):
     global COMMANDS
-    for c in COMMANDS:
-        if c.name == name:
-            return c
-    return None
+    if name in COMMANDS:
+        return COMMANDS[name]
+    else:
+        return None
 
 def usage(what=None):
     global COMMANDS
 
-    e = sys.stderr
     if what == None:
-        e.write("Usage: apple.py command arguments...\n\n")
-        e.write("The following commands are available:\n\n")
-        for c in COMMANDS:
-            e.write("  {} - {}\n".format(c.name, c.shortdesc))
-        e.write("\nUse 'apple.py command' to get a description of each command and its arguments.\n\n")
+        message("Usage: apple.py command arguments...\n")
+        message("The following commands are available:\n")
+        for (name, c) in COMMANDS.iteritems():
+            message("  {} - {}", name, c.shortdesc)
+        message("\nUse 'apple.py command' to get a description of each command and its arguments.\n")
 
     else:
         c = findCommand(what)
         if c == None:
             usage()
         else:
-            e.write("Usage: apple.py {} {} - {}\n".format(c.name, c.argdesc, c.shortdesc))
+            message("Usage: apple.py {} {} - {}", c.name, c.argdesc, c.shortdesc)
             if c.longdesc != "":
-                e.write(c.longdesc)
+                message(c.longdesc)
             
 if __name__ == "__main__":
     sys.stderr.write("apple.py - Aracne Processing PipeLine Extensions.\n\n")

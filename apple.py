@@ -15,6 +15,7 @@ import math
 import gzip
 import os.path
 import random
+import sqlite3
 from scipy.stats import norm
 import numpy.random
 
@@ -477,6 +478,49 @@ times it occurs in totsupport."""
         print "{} edges written to consensus network.".format(nwritten)
 
         return nwritten
+
+class bstableDB(bstable):
+    DBconn = None
+    DBcurs = None
+
+    def openDBconn(self, name):
+        """Open a connection to database `name'."""
+        self.DBconn = sqlite3.connect(name)
+        self.DBcurs = curs = self.DBconn.cursor()
+        try:
+            curs.execute("DROP TABLE edges")
+        except sqlite3.OperationalError:
+            pass                # ignore error if table does not exist
+        curs.execute("CREATE TABLE edges(gene1 int, gene2 int, support int, totmi float);")
+        curs.execute("CREATE INDEX edges1idx ON edges(gene1);")
+        curs.execute("CREATE INDEX edges2idx ON edges(gene1);")
+
+    def closeDBconn(self):
+        self.DBconn.commit()
+        self.DBconn.close()
+
+    def addEdge(self, hub, gene, mi):
+        """Add an edge from `hub' to `gene', with mutual information `mi',
+or update it if it already exists."""
+        hubid = self.internName(hub)
+        geneid = self.internName(gene)
+        s1 = self.DBcurs.execute("SELECT support, totmi FROM edges WHERE gene1=? AND gene2=?", (hubid, geneid))
+        data = s1.fetchone()
+        if data == None:
+            self.DBcurs.execute("INSERT INTO edges(gene1, gene2, support, totmi) VALUES (?, ?, ?, ?)", (hubid, geneid, 1, mi))
+        else:
+            newsupport = data[0] + 1
+            newmi = data[1] + mi
+            self.DBcurs.execute("UPDATE edges SET support=?, totmi=? WHERE gene1=? AND gene2=?", (newsupport, newmi, hubid, geneid))
+            
+    def countEdges(self):
+        """Returns the total number of edges currently in this bstable."""
+        s1 = self.DBcurs.execute("SELECT count(*) FROM edges")
+        data = s1.fetchone()
+        if data:
+            return data[0]
+        else:
+            return 0
 
 # Extract a subset of genes from an .adj file
 

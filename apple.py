@@ -77,6 +77,19 @@ def ensureFloat(s):
     except ValueError:
         return False
 
+def parseFloatOrPerc(s):
+    if s[-1] == '%':
+        x = int(s[:-1])
+        return x / 100.0
+    elif "." in s:
+        x = ensureFloat(s)
+        if x >= 1:
+            return None
+        else:
+            return x
+    else:
+        return ensureInt(s)
+
 def ensureFile(s):
     if os.path.isfile(s):
         return s
@@ -102,7 +115,7 @@ class toplevelCall():
 
 
     # print "Where command-and-arguments can be:\n"
-    # print "  bootstrap filename rounds - bootstrap a file into `rounds' new files.\n"
+    # print "  bootstrap [-z samplesize] filename rounds - bootstrap a file into `rounds' new files, each containing `samplesize' columns.\n"
     # print "  extract [-a] adj outfile genesfile - extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format.\n"
     # print "  stats filenames... - print statistics on all supplied filenames (in adj format).\n"
     # print "  random outfile genesfile nsamples - generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution.\n"
@@ -121,43 +134,58 @@ class toplevelCall():
 class bootstrapCommand(toplevelCall):
     filename = ""
     nrounds = 0
+    samplesize = None
 
     name = "bootstrap"
-    argdesc = "filename rounds"
-    shortdesc= "bootstrap a file into `rounds' new files."
+    argdesc = "[-z samplesize] filename rounds"
+    shortdesc= "bootstrap a file into `rounds' new files, each containing `samplesize' columns."
     longdesc = """
 This command takes as input a file containing gene expression values, and generates `rounds' new files through a bootstrap procedure.
 
 The input file is assumed to have genes in the rows and samples in the columns. The first two columns are reserved for gene identifiers. All remaining columns contain data for different samples.
 
-Each output file will have the same number of columns as the input file, chosen at random from the input file, with replacement. Therefore a column from the input file may appear more than once (or not at all) in the output file.
+Each output file will have the same number of columns as the input file (unless a different number is specified with the -z argument), chosen at random from the input file, with replacement. Therefore a column from the input file may appear more than once (or not at all) in the output file.
 """
 
     def parse(self, args):
-        if len(args) != 2:
-            return False
-        self.filename = args[0]
-        if not ensureFile(self.filename):
-            print "File {} does not exist.".format(self.filename)
-            return False
-        self.nrounds = ensureInt(args[1])
-        if not self.nrounds:
-            print "Argument `{}' should be a number.".format(args[1])
+        next = ""
+        seen = 0
+        for a in args:
+            if next == "-z":
+                self.samplesize = ensureInt(a)
+                next = ""
+            elif a == "-z":
+                next = a
+            elif seen == 0:
+                self.filename = a
+                seen += 1
+                if not ensureFile(self.filename):
+                    print "File {} does not exist.".format(self.filename)
+                    return False
+            else:
+                self.nrounds = ensureInt(a)
+                seen += 1
+                if not self.nrounds:
+                    print "Argument `{}' should be a number.".format(args[1])
+                    return False
+        if seen < 2:
+            print "Error: bootstrap requires filename and nrounds."
             return False
         return True
 
     def run(self):
-        bootstrapData(self.filename, self.nrounds)
+        bootstrapData(self.filename, self.nrounds, self.samplesize)
 
 def samplingWithReplacement(m):
     """Returns a list of m elements in the range 0..m-1 using
 random sampling with replacement."""
     return [ random.randrange(m) for i in range(m) ]
 
-def bootstrapData(filename, nrounds):
-    """Given a data file `filename', generate `nrounds' new files
+def bootstrapData(filename, nrounds, nsamples=None):
+    """Given a data file filename, generate nrounds new files
 obtained by bootstrapping its columns. Returns the list of new filenames."""
-    nsamples = countSamples(filename)
+    if nsamples == None:
+        nsamples = countSamples(filename)
     outfiles = []
 
     for i in range(nrounds):
@@ -364,6 +392,8 @@ bstable, giving it index `idx'."""
                         mi = float(parsed[i+1])
                         self.addEdge(hub, gene, mi)
                         numedges += 1
+                        # if numedges % 10000 == 0:
+                        #    print numedges
         self.totedge[idx] = numedges
         self.totbs += 1
         return numedges
@@ -491,9 +521,14 @@ class bstableDB(bstable):
             curs.execute("DROP TABLE edges")
         except sqlite3.OperationalError:
             pass                # ignore error if table does not exist
-        curs.execute("CREATE TABLE edges(gene1 int, gene2 int, support int, totmi float);")
+        curs.execute("CREATE TABLE edges(gene1 int, gene2 int, support int default 0, totmi float default 0.0);")
         curs.execute("CREATE INDEX edges1idx ON edges(gene1);")
         curs.execute("CREATE INDEX edges2idx ON edges(gene1);")
+
+    def initializeTable(self, ngenes):
+        for a in range(ngenes):
+            for b in range(ngenes):
+                self.DBcurs.execute("INSERT INTO edges(gene1, gene2) VALUES (?, ?);", (a, b))
 
     def closeDBconn(self):
         self.DBconn.commit()
@@ -504,14 +539,14 @@ class bstableDB(bstable):
 or update it if it already exists."""
         hubid = self.internName(hub)
         geneid = self.internName(gene)
-        s1 = self.DBcurs.execute("SELECT support, totmi FROM edges WHERE gene1=? AND gene2=?", (hubid, geneid))
-        data = s1.fetchone()
-        if data == None:
-            self.DBcurs.execute("INSERT INTO edges(gene1, gene2, support, totmi) VALUES (?, ?, ?, ?)", (hubid, geneid, 1, mi))
-        else:
-            newsupport = data[0] + 1
-            newmi = data[1] + mi
-            self.DBcurs.execute("UPDATE edges SET support=?, totmi=? WHERE gene1=? AND gene2=?", (newsupport, newmi, hubid, geneid))
+        # s1 = self.DBcurs.execute("SELECT support, totmi FROM edges WHERE gene1=? AND gene2=?", (hubid, geneid))
+        # data = s1.fetchone()
+        #  if data == None:
+        #     self.DBcurs.execute("INSERT INTO edges(gene1, gene2, support, totmi) VALUES (?, ?, ?, ?)", (hubid, geneid, 1, mi))
+        #  else:
+        # newsupport = data[0] + 1
+        # newmi = data[1] + mi
+        self.DBcurs.execute("UPDATE edges SET support=support+1, totmi=totmi+? WHERE gene1=? AND gene2=?", (mi, hubid, geneid))
             
     def countEdges(self):
         """Returns the total number of edges currently in this bstable."""
@@ -534,7 +569,7 @@ class extractCommand(toplevelCall):
     both = False
 
     name = "extract"
-    argdesc = "[-a] [-o outfile] adj outfile genesfile [genesfile2]"
+    argdesc = "[-a] [-o outfile] adj genesfile [genesfile2]"
     shortdesc = "extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format."
     longdesc = """
 This command extracts the genes specified in `genesfile' from the .adj file in input and writes their edges to `outfile'.
@@ -655,7 +690,7 @@ If `both' is True, only output edges where both genes belong to the list."""
     finally:
         if outfile != None:
             out.close()
-    message("{} edges extracted.".extracted)
+    message("{} edges extracted.".format(extracted))
 
 
 #
@@ -880,9 +915,10 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
 # Main function and top-level commands
 
 class translateCommand(toplevelCall):
-    table = None
+    tablefile = None
     infiles = []
     outfiles = []
+    table = None
 
     name = "translate"
     argdesc = "table infile outfile ..."
@@ -900,7 +936,7 @@ Multiple pairs of input and output files may be specified on the command line. E
     def parse(self, args):
         nargs = len(args)
         if nargs > 1 and (nargs % 2 == 1):
-            self.table = args[0]
+            self.tablefile = args[0]
             for i in range(1, len(args), 2):
                 self.infiles.append(args[i])
                 self.outfiles.append(args[i+1])
@@ -908,15 +944,15 @@ Multiple pairs of input and output files may be specified on the command line. E
             message("The translate command requires at least three filenames as arguments: table file, input file, output file.")
             return False
 
-        if not os.path.isfile(self.table):
-            message("Translation table `{}' does not exist.", self.table)
+        if not os.path.isfile(self.tablefile):
+            message("Translation table `{}' does not exist.", self.tablefile)
             return False
 
         return True
     
     def run(self):
         table = {}
-        with open(tablefile, "r") as f:
+        with open(self.tablefile, "r") as f:
             for line in f:
                 parsed = line.rstrip("\n").split("\t")
                 if parsed[0] != "\\N":
@@ -1138,6 +1174,47 @@ def doFilter(infile, threshold, outfile=None, total=False):
     else:
         print "{} edges seen, {} edges written for {} hub genes.".format(nin, nout, nrows)
 
+# Cleanup command
+
+class cleanupCommand(toplevelCall):
+    infile = None
+    outfile = None
+    descColumns = 2
+    maxzeros = 0.5
+
+    name = "cleanup"
+    argdesc = "[options] infile"
+    shortdesc = "clean input file removing lines containing too many zeros."
+    longdesc = """
+This command removes lines from the input file containing a number of zero expression values over
+a specified maximum. The maximum can be expressed as an absolute value or as a fraction of the
+total number of columns. Options:
+
+  [-o outfile] - Write output to outfile instead of standard output.
+  [-c columns] - Number of descriptive columns at the beginning of each row
+                 (default: 2).
+  [-m max]     - An integer or float number specifying the maximum number of zero values allowed.
+                 If a float, it is interpreted as the fraction of the total number of data
+                 columns (e.g., 0.4 = remove lines having more than 40% zeros).
+"""
+
+    def parse(self, args):
+        next = ""
+        for a in args:
+            if next == "-o":
+                self.outfile = a
+                next = ""
+            elif next == "-c":
+                self.descColumns = ensureInt(a)
+                next = ""
+            elif next == "-m":
+                maxzeros = parseFloatOrPerc(a)
+                next = ""
+            elif a in ["-o", "-c", "-m"]:
+                next = a
+            else:
+                self.infile = a
+
 # Network -> adj conversion
 
 class convertCommand(toplevelCall):
@@ -1155,6 +1232,12 @@ This command converts between different file formats, according to the specified
   na - convert from networkData format to adj 
   nc - convert from networkData format to cytoscape
   ca - convert from cytoscape format to adj
+  co - convert from cytoscape format to connections
+  ac - convert from adj to cytoscape
+
+Formats:
+cytocscape: gene1, gene2, mi
+connection: hub, number of connected genes, list of connected genes
 """
 
     def parse(self, args):
@@ -1188,8 +1271,12 @@ This command converts between different file formats, according to the specified
             networkToCytoscape(self.infile, self.outfile, support=self.support)
         elif op == "ca":
             cytoscapeToAdj(self.infile, self.outfile)
+        elif op == "co":
+            cytoscapeToConn(self.infile, self.outfile)
+        elif op == "ac":
+            AdjToCytoscape(self.infile, self.outfile)
         else:
-            print "Operator should be one of: na, nc, ca."
+            print "Operator should be one of: na, nc, ca, co."
 
 def networkToAdj(infile, outfile, support=0):
     current = ""
@@ -1234,6 +1321,84 @@ def cytoscapeToAdj(infile, outfile):
                         current = hub
                     out.write("\t{}\t{}".format(parsed[1], parsed[2]))
         out.write("\n")
+
+def AdjToCytoscape(infile, outfile):
+    extracted = 0
+    if outfile == None:
+        out = sys.stdout
+    else:
+        out = open(outfile, "w")
+    try:
+        out.write("#Gene1\tGene2\tMI\n")
+        with genOpen(infile, "r") as f:
+            for line in f:
+                if line[0] != ">":
+                    parsed = line.rstrip("\n").split("\t")
+                    hub = parsed[0]
+
+                    for i in range(1, len(parsed), 2):
+                        gene = parsed[i]
+                        if hub < gene:
+                            out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
+                            extracted += 1
+    finally:
+        if outfile != None:
+            out.close()
+    message("{} edges extracted.".format(extracted))
+
+class hubConnections():
+    hub = ""
+    nconns = 0
+    genes = []
+
+    def __init__(self, hub, gene):
+        self.hub = hub
+        self.nconns = 1
+        self.genes = [gene]
+
+    def add(self, gene):
+        self.nconns += 1
+        self.genes.append(gene)
+
+    def getNconns(self):
+        return self.nconns
+
+def cytoscapeToConn(infile, outfile):
+    table = {}
+    hdr = True
+
+    print "Parsing file {}...".format(infile)
+    with genOpen(infile, "r") as f:
+        for line in f:
+            if hdr:
+                hdr = False
+            else:
+                parsed = line.rstrip("\n").split("\t")
+                hub = parsed[0]
+                gene = parsed[1]
+                
+                if hub in table:
+                    table[hub].add(gene)
+                else:
+                    c = hubConnections(hub, gene)
+                    table[hub] = c
+                if gene in table:
+                    table[gene].add(hub)
+                else:
+                    c = hubConnections(gene, hub)
+                    table[gene] = c
+                    
+    sortedConns = sorted(table.values(), key=hubConnections.getNconns, reverse=True)
+    print "Top 5 hubs:"
+    for c in sortedConns[0:5]:
+        print "{}\t{}".format(c.hub, c.nconns)
+
+    with open(outfile, "w") as out:
+        for c in sortedConns:
+            out.write("{}\t{}\t".format(c.hub, c.nconns))
+            out.write("\t".join(c.genes))
+            out.write("\n")
+            
 
 def networkToCytoscape(infile, outfile, support=0):
     with open(outfile, "w") as out:

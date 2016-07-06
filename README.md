@@ -1,7 +1,9 @@
 # apple.py
-A command-line tool that facilitates working with the ARACNE program.
+A command-line tool that facilitates working with the ARACNE program. Usage:
 
-Usage: apple.py command arguments...
+```
+apple.py command arguments...
+```
 
 The following commands are available:
 

@@ -43,7 +43,7 @@ Each output file will have the same number of columns as the input file (unless 
 Usage: 
 
 ```
-apple.py consensus [options] outfile infiles...
+apple.py consensus [options] outfile infiles ...
 ```
 
 This command generates a consensus network from one or more .adj files (usually generated through a bootstrap procedure). The following options are available:
@@ -96,7 +96,7 @@ This command generates a simulated gene expression dataset, using one of two dif
 
 * If -nb is specified, the program will generate *nsamples* values for each gene listed in the first
   column of file *genesfile*, using a negative binomial distribution. The output file will have a
-  number of columns equal to nsamples+2, with the first two columns containing the gene name (for
+  number of columns equal to *nsamples*+2, with the first two columns containing the gene name (for
   compatibility with ARACNE).
 
 * Otherwise, the expression values in *genesfile* (all values in the row except for the first two)
@@ -104,3 +104,86 @@ This command generates a simulated gene expression dataset, using one of two dif
 
 Output will be written to standard output or to the file specified with the -o option.
 
+### Stats
+
+Usage:
+
+```
+apple.py stats [-o outfile] filenames ...
+```
+
+This command prints statistics on all the .adj files supplied as arguments. For each file, the command
+prints: the number of hub genes, the total number of edges, and the average number of edges per hub.
+
+Output is in tab-delimited format, and is written to standard output or to the file specified with the
+-o option.
+
+### Translate
+
+Usage: 
+
+```
+apple.py translate table infile outfile ... 
+```
+
+This command converts the gene identifiers in *infile* according to a supplied translation table.
+Gene identifiers are looked for in the first two columns of each input file.
+File *table* should e tab-delimited and contain two columns: original gene name, converted name.
+
+Multiple pairs of input and output files may be specified on the command line. E.g.:
+
+```
+apple.py translate table.txt in1.csv out1.csv in2.csv out2.csv in3.csv out3.csv
+```
+
+### Bootstrap
+
+Usage: 
+
+```
+apple.py bootstrap [-z samplesize] filename rounds
+```
+
+This command takes as input a file containing gene expression values, and generates *rounds* new files through a bootstrap procedure.
+
+The input file is assumed to have genes in the rows and samples in the columns. The first two columns are reserved for gene identifiers (for compatibility with ARACNE). All remaining columns contain data for different samples.
+
+Each output file will have the same number of columns as the input file (unless a different number is specified with the -z argument), chosen at random from the input file, with replacement. Therefore a column from the input file may appear more than once (or not at all) in the output file.
+
+### Extract
+
+Usage: 
+
+```
+apple.py extract [-a] [-o outfile] adj genesfile [genesfile2]
+```
+- extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format.
+
+This command extracts the genes specified in *genesfile* from the .adj file in input and writes their edges to *outfile*.
+
+File *genesfile* should have a single column containing gene identifiers (one per line).
+
+The output (sent to standard output, or to a file specified with the -o option) is tab-delimited with three columns:
+hub gene, target gene, MI. The hub gene is always one of the genes specified in *genesfile*, while MI is the mutual
+information of the edge connecting it to the target gene.
+
+If the -a option is specified, both the hub gene and the target gene are required to be in *genesfile*.
+
+### Histogram
+
+Usage: 
+
+```
+apple.py histogram [options] infile
+```
+
+This command computes the histogram of MI values for the edges in the specified .adj file. The following options are available:
+
+```
+  [-o outfile] - write output to `outfile' instead of standard output.
+  [-n nbins]   - Specifiy number of bins to use (100 by default).
+  [-r min max] - Only consider values between `min' and `max' (by default, the whole range of MIs is used).
+  [-v]         - If specified, values higher than `max' are added to the last bin.
+  [-s]         - If specified, the histogram is computed on the sum of the MIs of each row.
+  [-m mifile]  - Write all distinct MI values to `mifile'.
+```

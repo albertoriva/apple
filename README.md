@@ -46,7 +46,7 @@ Usage:
 apple.py consensus [options] outfile infiles...
 ```
 
-This command generates a consensus network from a list of .adj files (usually generated through a bootstrap procedure). The following options are available:
+This command generates a consensus network from one or more .adj files (usually generated through a bootstrap procedure). The following options are available:
 
 ```
   [-c countsfile] - write a tab-delimited file with two columns: support, number of occurrences of support.
@@ -59,16 +59,29 @@ This command generates a consensus network from a list of .adj files (usually ge
 
 ### Convert
 
-Usage: apple.py convert [options] op infile outfile - convert `infile' to a different format according to operator `op' and write the results to `outfile'.
+Usage: 
 
-This command converts between different file formats, according to the specified `op'. `op' can be one of:
+```
+apple.py convert [options] op infile outfile
+```
 
+This command converts between different file formats, according to the specified operator *op*, which can be one of:
+
+```
   na - convert from networkData format to adj
   nc - convert from networkData format to cytoscape
   ca - convert from cytoscape format to adj
   co - convert from cytoscape format to connections
   ac - convert from adj to cytoscape
+```
 
-Formats:
-cytocscape: gene1, gene2, mi
-connection: hub, number of connected genes, list of connected genes
+The following table describes the details of each format known to apple.py. In general, all these file formats list all edges connecting pairs of genes, and may provide a measure of the strength of the relationship between the two genes (e.g., mutual information). Some formats (e.g. adj, connection) are hub-oriented: for each hub gene, they list all genes connected to it in the same entry. 
+
+|Format|Details|
+|------|-------|
+|adj|ARACNE's default output format. The file begines with an optional header that contains information about the ARACNE run parameters (header lines begin with the > character). After the header, lines are tab-delimited and each line refers to a hub gene. The first entry in each line contains the id of the hub gene, while the rest of the line consists of pairs of entries: the id of the connected gene and the MI associated with this edge.|
+|connections|A hub-oriented tab-delimited format with three or more columns: hub, number of connected genes, connected genes.|
+|cytocscape|A tab-delimited format with three columns: gene1, gene2, mi.|
+|networkData|A tab-delimited format with five columns: gene1, gene2, support (number of times this edge was observed), average MI of all observations of this edge, P-value|
+
+

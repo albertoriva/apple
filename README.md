@@ -180,10 +180,10 @@ apple.py histogram [options] infile
 This command computes the histogram of MI values for the edges in the specified .adj file. The following options are available:
 
 ```
-  [-o outfile] - write output to `outfile' instead of standard output.
+  [-o outfile] - write output to *outfile* instead of standard output.
   [-n nbins]   - Specifiy number of bins to use (100 by default).
-  [-r min max] - Only consider values between `min' and `max' (by default, the whole range of MIs is used).
-  [-v]         - If specified, values higher than `max' are added to the last bin.
+  [-r min max] - Only consider values between *min* and *max* (by default, the whole range of MIs is used).
+  [-v]         - If specified, values higher than *max* are added to the last bin.
   [-s]         - If specified, the histogram is computed on the sum of the MIs of each row.
-  [-m mifile]  - Write all distinct MI values to `mifile'.
+  [-m mifile]  - Write all distinct MI values to *mifile*.
 ```

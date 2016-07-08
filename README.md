@@ -9,7 +9,7 @@ The following commands are available:
 
 |Command|Description|
 |-------|-----------|
-|bootstrap|Bootstrap a file into *rounds* new files, each containing *samplesize* columns.|
+|[bootstrap](https://github.com/albertoriva/apple#bootstrap)|Bootstrap a file into *rounds* new files, each containing *samplesize* columns.|
 |consensus|Generate a consensus network from multiple .adj files.|
 |convert|Convert *infile* to a different format according to operator *op* and write the results to *outfile*.|
 |extract|Extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format.|
@@ -94,7 +94,6 @@ apple.py extract [-a] [-o outfile] adj genesfile [genesfile2]
 - extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format.
 
 This command extracts the genes specified in *genesfile* from the .adj file in input and writes their edges to *outfile*.
-
 File *genesfile* should have a single column containing gene identifiers (one per line).
 
 The output (sent to standard output, or to a file specified with the -o option) is tab-delimited with three columns:
@@ -102,6 +101,9 @@ hub gene, target gene, MI. The hub gene is always one of the genes specified in 
 information of the edge connecting it to the target gene.
 
 If the -a option is specified, both the hub gene and the target gene are required to be in *genesfile*.
+
+This command is useful to extract sub-networks in which one gene in each edge (or both) belong to a set of interest,
+e.g. a pathway or a functional class.
 
 ### Filter
 

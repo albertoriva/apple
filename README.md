@@ -56,3 +56,19 @@ This command generates a consensus network from a list of .adj files (usually ge
   [-s support]    - Only output edges found in at least `support' bootstrap files.
   [-f fraction]   - Like -s, but determines the support in order to have the specified fraction of edges in output.
 ```
+
+### Convert
+
+Usage: apple.py convert [options] op infile outfile - convert `infile' to a different format according to operator `op' and write the results to `outfile'.
+
+This command converts between different file formats, according to the specified `op'. `op' can be one of:
+
+  na - convert from networkData format to adj
+  nc - convert from networkData format to cytoscape
+  ca - convert from cytoscape format to adj
+  co - convert from cytoscape format to connections
+  ac - convert from adj to cytoscape
+
+Formats:
+cytocscape: gene1, gene2, mi
+connection: hub, number of connected genes, list of connected genes

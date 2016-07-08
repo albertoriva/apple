@@ -26,3 +26,14 @@ Detail usage of each apple.py command is provided below.
 
 ### Bootstrap
 
+Usage: 
+
+```
+apple.py bootstrap [-z samplesize] filename rounds
+```
+
+This command takes as input a file containing gene expression values, and generates *rounds* new files through a bootstrap procedure.
+
+The input file is assumed to have genes in the rows and samples in the columns. The first two columns are reserved for gene identifiers. All remaining columns contain data for different samples.
+
+Each output file will have the same number of columns as the input file (unless a different number is specified with the -z argument), chosen at random from the input file, with replacement. Therefore a column from the input file may appear more than once (or not at all) in the output file.

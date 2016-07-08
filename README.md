@@ -22,7 +22,13 @@ The following commands are available:
 |[stats](#stats)|Print statistics on all supplied filenames (in adj format).|
 |[translate](#translate)|Translate identifiers in *infile* writing them to *outfile*.|
 
-Use 'apple.py command' to get a description of each command and its arguments.
+Use 
+
+```
+apple.py command
+```
+
+with no additional arguments to get a description of each command and its options.
 
 ## Command descriptions
 Detail usage of each apple.py command is provided below.

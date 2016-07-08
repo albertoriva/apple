@@ -37,3 +37,22 @@ This command takes as input a file containing gene expression values, and genera
 The input file is assumed to have genes in the rows and samples in the columns. The first two columns are reserved for gene identifiers. All remaining columns contain data for different samples.
 
 Each output file will have the same number of columns as the input file (unless a different number is specified with the -z argument), chosen at random from the input file, with replacement. Therefore a column from the input file may appear more than once (or not at all) in the output file.
+
+### Consensus
+
+Usage: 
+
+```
+apple.py consensus [options] outfile infiles...
+```
+
+This command generates a consensus network from a list of .adj files (usually generated through a bootstrap procedure). The following options are available:
+
+```
+  [-c countsfile] - write a tab-delimited file with two columns: support, number of occurrences of support.
+  [-d datafile]   - write a tab-delimited file with five columns: hub, gene, support, sum of MI, P-value.
+  [-p pval]       - Use the specified P-value to filter edges in output (with Bonferroni correction).
+  [-nb]           - If specified, disables Bonferroni correction (used with -p).
+  [-s support]    - Only output edges found in at least `support' bootstrap files.
+  [-f fraction]   - Like -s, but determines the support in order to have the specified fraction of edges in output.
+```

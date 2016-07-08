@@ -1,5 +1,8 @@
 # apple.py
-A command-line tool that facilitates working with the ARACNE program. Usage:
+A command-line tool that facilitates working with the [ARACNE](http://califano.c2b2.columbia.edu/aracne) program to reconstruct genetic networks from gene-level or
+transcript-level expression data. 
+
+Basic usage:
 
 ```
 apple.py command arguments...

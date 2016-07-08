@@ -9,7 +9,7 @@ The following commands are available:
 
 |Command|Description|
 |-------|-----------|
-|[bootstrap](https://github.com/albertoriva/apple#bootstrap)|Bootstrap a file into *rounds* new files, each containing *samplesize* columns.|
+|[bootstrap](#bootstrap)|Bootstrap a file into *rounds* new files, each containing *samplesize* columns.|
 |consensus|Generate a consensus network from multiple .adj files.|
 |convert|Convert *infile* to a different format according to operator *op* and write the results to *outfile*.|
 |extract|Extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format.|

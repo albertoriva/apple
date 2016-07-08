@@ -5,7 +5,7 @@ transcript-level expression data.
 Basic usage:
 
 ```
-apple.py *command* *arguments*...
+apple.py command arguments...
 ```
 
 The following commands are available:
@@ -25,7 +25,7 @@ The following commands are available:
 Use 
 
 ```
-apple.py *command*
+apple.py command
 ```
 
 with no additional arguments to get a description of each command and its options.

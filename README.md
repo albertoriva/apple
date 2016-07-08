@@ -84,4 +84,23 @@ The following table describes the details of each format known to apple.py. In g
 |cytocscape|A tab-delimited format with three columns: gene1, gene2, mi.|
 |networkData|A tab-delimited format with five columns: gene1, gene2, support (number of times this edge was observed), average MI of all observations of this edge, P-value|
 
+### Random
+
+Usage:
+
+```
+apple.py random [-o outfile] [-nb nsamples] genesfile
+```
+
+This command generates a simulated gene expression dataset, using one of two different methods:
+
+  If -nb is specified, the program will generate *nsamples* values for each gene listed in the first
+  column of file *genesfile*, using a negative binomial distribution. The output file will have a
+  number of columns equal to nsamples+2, with the first two columns containing the gene name (for
+  compatibility with ARACNE).
+
+  Otherwise, the expression values in *genesfile* (all values in the row except for the first two)
+  will be shuffled.
+
+Output will be written to standard output or to the file specified with the -o option.
 

@@ -491,7 +491,7 @@ times it occurs in totsupport."""
         return nwritten
 
     def saveConsensusBySupport(self, filename, minsupport, header):
-        print "Saving consensus network to {}...".format(filename)
+        print "Saving consensus network to {} (by support)...".format(filename)
         nwritten = 0
         with open(filename, "w") as out:
             out.write(header)
@@ -740,7 +740,10 @@ rows (ie, the average number of elements in each row)."""
             if not line[0] == ">":
                 nrows += 1
                 nfields += (line.count("\t") / 2)
-    return (nrows, nfields, 1.0 * nfields / nrows)
+    if nrows == 0:
+        return (nrows, nfields, 0)
+    else:
+        return (nrows, nfields, 1.0 * nfields / nrows)
 
 def doAracneStats(filenames, outfile=None):
     """Call aracneTableStats on all files in `filenames' printing the 
@@ -972,7 +975,7 @@ def translateFile(table, infile, outfile):
                 if parsed[0] in table:
                     parsed[0] = table[parsed[0]]
                     nfound += 1
-                if parsed[1] in table:
+                if len(parsed) > 1 and parsed[1] in table:
                     parsed[1] = table[parsed[1]]
                     nfound +=1
                 out.write("\t".join(parsed) + "\n")

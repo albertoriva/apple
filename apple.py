@@ -19,6 +19,8 @@ import sqlite3
 from scipy.stats import norm
 import numpy.random
 
+NAMECOLUMNS = 1                 # Number of columns containing row headers (set to 2 for old Aracne behavior)
+
 ## ToDo:
 ## Check for division by zero in normalization (sigma=0) - Done
 ## Don't output hub genes with no edges - Done
@@ -111,22 +113,7 @@ class toplevelCall():
     def run(self):
         """Run this command."""
         pass
-
-
-
-    # print "Where command-and-arguments can be:\n"
-    # print "  bootstrap [-z samplesize] filename rounds - bootstrap a file into `rounds' new files, each containing `samplesize' columns.\n"
-    # print "  extract [-a] adj outfile genesfile - extract edges for the genes in file genesfile from the input adj file and write them to outfile in tab-delimited format.\n"
-    # print "  stats filenames... - print statistics on all supplied filenames (in adj format).\n"
-    # print "  random outfile genesfile nsamples - generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution.\n"
-    # print "  consensus [options] outfile infiles... - generate a consensus network from multiple .adj files."
-    # print "    Options:"
-    # print "    [-c countsfile] - write a tab-delimited file with two columns: support, number of occurrences of support."
-    # print "    [-d datafile]   - write a tab-delimited file with five columns: hub, gene, support, sum of MI, P-value."
-    # print "    [-p pval] [-nb] - Use the specified P-value to filter edges in output; -nb disables Bonferroni correction."
-    # print "    [-s support]    - Only output edges found in at least `support' bootstrap files."
-    # print "    [-f fraction]   - Like -s, but determines the support in order to have the specified fraction of edges in output."
-    
+   
 #
 # Bootstrap command
 #
@@ -199,9 +186,9 @@ obtained by bootstrapping its columns. Returns the list of new filenames."""
             with open(filename, "r") as f:
                 for line in f:
                     parsed = line.rstrip("\n").split("\t")
-                    new = parsed[0:2]
+                    new = parsed[0:NAMECOLUMNS]
                     for c in columns:
-                        new.append(parsed[c+2])
+                        new.append(parsed[c+NAMECOLUMNS])
                     o.write("\t".join(new) + "\n")
         
     return outfiles
@@ -1237,6 +1224,7 @@ This command converts between different file formats, according to the specified
   ca - convert from cytoscape format to adj
   co - convert from cytoscape format to connections
   ac - convert from adj to cytoscape
+  ax - convert from adj to CX
 
 Formats:
 cytocscape: gene1, gene2, mi
@@ -1278,8 +1266,10 @@ connection: hub, number of connected genes, list of connected genes
             cytoscapeToConn(self.infile, self.outfile)
         elif op == "ac":
             AdjToCytoscape(self.infile, self.outfile)
+        elif op == "ax":
+            AdjToCx(self.infile, self.outfile)
         else:
-            print "Operator should be one of: na, nc, ca, co."
+            print "Operator should be one of: na, nc, ca, co, ax."
 
 def networkToAdj(infile, outfile, support=0):
     current = ""
@@ -1326,7 +1316,9 @@ def cytoscapeToAdj(infile, outfile):
         out.write("\n")
 
 def AdjToCytoscape(infile, outfile):
+    seen = {}
     extracted = 0
+    rev = 0
     if outfile == None:
         out = sys.stdout
     else:
@@ -1341,13 +1333,27 @@ def AdjToCytoscape(infile, outfile):
 
                     for i in range(1, len(parsed), 2):
                         gene = parsed[i]
-                        if hub < gene:
-                            out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
-                            extracted += 1
+                        rkey = gene + ":" + hub
+                        if rkey in seen:
+                            rev += 1
+                            seen[rkey] = (seen[rkey] + float(parsed[i+1])) / 2.0
+                            # del seen[rkey]
+                        else:
+                            key = hub + ":" + gene
+                            seen[key] = float(parsed[i+1])
+                            #out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
+                            #extracted += 1
+        for (key, mi) in seen.iteritems():
+            extracted += 1
+            w = key.split(":")
+            out.write("{}\t{}\t{}\n".format(w[0], w[1], mi))
     finally:
         if outfile != None:
             out.close()
-    message("{} edges extracted.".format(extracted))
+    message("{} edges extracted, {} reverse.".format(extracted, rev))
+
+def AdjToCx(infile, outfile):
+    pass
 
 class hubConnections():
     hub = ""

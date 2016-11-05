@@ -18,6 +18,7 @@ import random
 import sqlite3
 from scipy.stats import norm
 import numpy.random
+import CXwriter
 
 NAMECOLUMNS = 1                 # Number of columns containing row headers (set to 2 for old Aracne behavior)
 
@@ -1211,6 +1212,7 @@ class convertCommand(toplevelCall):
     infile = None
     outfile = None
     operator = None
+    options = {}
     support = 0
 
     name = "convert"
@@ -1219,12 +1221,12 @@ class convertCommand(toplevelCall):
     longdesc = """
 This command converts between different file formats, according to the specified `op'. `op' can be one of:
 
-  na - convert from networkData format to adj 
-  nc - convert from networkData format to cytoscape
+  na - convert from networkData format to adj [-s]
+  nc - convert from networkData format to cytoscape [-s]
   ca - convert from cytoscape format to adj
   co - convert from cytoscape format to connections
   ac - convert from adj to cytoscape
-  ax - convert from adj to CX
+  ax - convert from adj to CX [-d, -m]
 
 Formats:
 cytocscape: gene1, gene2, mi
@@ -1232,13 +1234,15 @@ connection: hub, number of connected genes, list of connected genes
 """
 
     def parse(self, args):
+        self.options = {}
         next = ""
         nargs = 0
         for a in args:
-            if next == "-s":
-                self.support = ensureInt(a)
+            if next != "": # == "-s":
+                self.options[next] = a
+                # self.support = ensureInt(a)
                 next = ""
-            elif a in ["-s"]:
+            elif a[0] == '-': # in ["-s"]:
                 next = a
             elif nargs == 0:
                 self.operator = a
@@ -1257,9 +1261,9 @@ connection: hub, number of connected genes, list of connected genes
     def run(self):
         op = self.operator
         if op == "na":
-            networkToAdj(self.infile, self.outfile, support=self.support)
+            networkToAdj(self.infile, self.outfile, self.options)
         elif op == "nc":
-            networkToCytoscape(self.infile, self.outfile, support=self.support)
+            networkToCytoscape(self.infile, self.outfile, self.options)
         elif op == "ca":
             cytoscapeToAdj(self.infile, self.outfile)
         elif op == "co":
@@ -1267,11 +1271,15 @@ connection: hub, number of connected genes, list of connected genes
         elif op == "ac":
             AdjToCytoscape(self.infile, self.outfile)
         elif op == "ax":
-            AdjToCx(self.infile, self.outfile)
+            AdjToCx(self.infile, self.outfile, self.options)
         else:
             print "Operator should be one of: na, nc, ca, co, ax."
 
-def networkToAdj(infile, outfile, support=0):
+def networkToAdj(infile, outfile, options):
+    if "-s" in options:
+        support = ensureInt(options["-s"])
+    else:
+        support = 0
     current = ""
     genes = []
     with open(outfile, "w") as out:
@@ -1352,8 +1360,14 @@ def AdjToCytoscape(infile, outfile):
             out.close()
     message("{} edges extracted, {} reverse.".format(extracted, rev))
 
-def AdjToCx(infile, outfile):
-    pass
+def AdjToCx(infile, outfile, options):
+    C = CXwriter.CXwriter(infile)
+    if "-d" in options:
+        C.mindegree = ensureInt(options["-d"])
+    if "-m" in options:
+        C.maxnodes = ensureInt(options["-m"])
+    with open(outfile, "w") as out:
+        C.writeNetwork(stream=out)
 
 class hubConnections():
     hub = ""
@@ -1409,7 +1423,11 @@ def cytoscapeToConn(infile, outfile):
             out.write("\n")
             
 
-def networkToCytoscape(infile, outfile, support=0):
+def networkToCytoscape(infile, outfile, options):
+    if "-s" in options:
+        support = ensureInt(options["-s"])
+    else:
+        support = 0
     with open(outfile, "w") as out:
         with genOpen(infile, "r") as f:
             for line in f:

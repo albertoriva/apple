@@ -5,7 +5,7 @@
 # apple.py - Aracne Processing PipeLine Extensions. #
 #                                                   #
 # (c) 2015, Alberto Riva (ariva@ufl.edu)            #
-#           Son Le (nuibang@gmail.com               #
+#           Son Le (nuibang@gmail.com)              #
 #           University of Florida                   #
 #####################################################
 
@@ -20,8 +20,6 @@ from scipy.stats import norm
 import numpy.random
 import CXwriter
 
-NAMECOLUMNS = 1                 # Number of columns containing row headers (set to 2 for old Aracne behavior)
-
 ## ToDo:
 ## Check for division by zero in normalization (sigma=0) - Done
 ## Don't output hub genes with no edges - Done
@@ -33,6 +31,10 @@ NAMECOLUMNS = 1                 # Number of columns containing row headers (set 
 ## Command for COMPARE-MI-HISTOGRAMS
 ## Histogram command should return range to stdout
 ## Clean up output (messages to stderr)
+
+## Add command-line option to add network attributes in CX file - DONE (add attributes in conf file)
+## species, disease, disease subtype, celltype, source (lab), program, references, 
+## Add convert cx to convert cyto to CX (with FPR value for each edge)
 
 # COMMANDS = []
 
@@ -49,12 +51,17 @@ def genOpen(filename, mode):
     else:
         return open(filename, mode)
 
-def readLines(filename):
+def readLines(filename, col=None):
     """Returns the contents of `filename' as a list of strings, removing
-the trailing return character."""
+the trailing return character. If `col' is specified, only returns the 
+indicated column."""
     with open(filename, "r") as f:
         lines = f.readlines()
-    return [ s.rstrip("\n\r") for s in lines ]
+    lines = [ s.rstrip("\n\r") for s in lines ]
+    if col == None:
+        return lines
+    else:
+        return [ s.split("\t")[col] for s in lines ]
 
 def changeExtension(filename, newext):
     """Returns a new filename obtained by replacing the extension in `filename' with `newext'."""
@@ -99,6 +106,18 @@ def ensureFile(s):
     else:
         return False
 
+def readAttributes(filename):
+    attrs = {}
+    with open(filename, "r") as f:
+        for line in f:
+            line = line.rstrip("\r\n")
+            p = line.find(":")
+            if p > 0:
+                key = line[:p].strip(" \t")
+                val = line[1+p:].strip(" \t")
+                attrs[key] = val
+    return attrs
+
 # Top level commands and usage message
 
 class toplevelCall():
@@ -123,9 +142,10 @@ class bootstrapCommand(toplevelCall):
     filename = ""
     nrounds = 0
     samplesize = None
+    genecols = 2
 
     name = "bootstrap"
-    argdesc = "[-z samplesize] filename rounds"
+    argdesc = "[-z samplesize] [-gc genecols] filename rounds"
     shortdesc= "bootstrap a file into `rounds' new files, each containing `samplesize' columns."
     longdesc = """
 This command takes as input a file containing gene expression values, and generates `rounds' new files through a bootstrap procedure.
@@ -142,7 +162,10 @@ Each output file will have the same number of columns as the input file (unless 
             if next == "-z":
                 self.samplesize = ensureInt(a)
                 next = ""
-            elif a == "-z":
+            elif next == "-gc":
+                self.genecols = ensureInt(a)
+                next = ""
+            elif a in ["-z", "-gc"]:
                 next = a
             elif seen == 0:
                 self.filename = a
@@ -162,14 +185,14 @@ Each output file will have the same number of columns as the input file (unless 
         return True
 
     def run(self):
-        bootstrapData(self.filename, self.nrounds, self.samplesize)
+        bootstrapData(self.filename, self.nrounds, nsamples=self.samplesize, genecols=self.genecols)
 
 def samplingWithReplacement(m):
     """Returns a list of m elements in the range 0..m-1 using
 random sampling with replacement."""
     return [ random.randrange(m) for i in range(m) ]
 
-def bootstrapData(filename, nrounds, nsamples=None):
+def bootstrapData(filename, nrounds, nsamples=None, genecols=2):
     """Given a data file filename, generate nrounds new files
 obtained by bootstrapping its columns. Returns the list of new filenames."""
     if nsamples == None:
@@ -187,9 +210,9 @@ obtained by bootstrapping its columns. Returns the list of new filenames."""
             with open(filename, "r") as f:
                 for line in f:
                     parsed = line.rstrip("\n").split("\t")
-                    new = parsed[0:NAMECOLUMNS]
+                    new = parsed[0:genecols]
                     for c in columns:
-                        new.append(parsed[c+NAMECOLUMNS])
+                        new.append(parsed[c+genecols])
                     o.write("\t".join(new) + "\n")
         
     return outfiles
@@ -555,12 +578,14 @@ class extractCommand(toplevelCall):
     genesfile2 = None
     geneslist2 = None
     both = False
+    cyto = False                # Input is cytoscape?
 
     name = "extract"
-    argdesc = "[-a] [-o outfile] adj genesfile [genesfile2]"
+    argdesc = "[-a] [-c] [-o outfile] adj genesfile [genesfile2]"
     shortdesc = "extract edges for the genes in file genesfile from the input adj file and write them in tab-delimited format."
     longdesc = """
-This command extracts the genes specified in `genesfile' from the .adj file in input and writes their edges to `outfile'.
+This command extracts the genes specified in `genesfile' from the .adj file in input and writes their edges to `outfile' If
+-c is specified, reads a cytoscape file instead of adj.
 
 File `genesfile' should have a single column containing gene identifiers (one per line).
 
@@ -581,6 +606,8 @@ If the -a option is specified, both the hub gene and the target gene are require
                 next = "-o"
             elif arg == "-a":
                 self.both = True
+            elif arg == "-c":
+                self.cyto = True
             elif self.adjfile == None:
                 self.adjfile = arg
             elif self.genesfile == None:
@@ -594,13 +621,16 @@ If the -a option is specified, both the hub gene and the target gene are require
         if self.genesfile == None:
             print "The genesfile argument is required."
             return False
-        self.geneslist = readLines(self.genesfile)
+        self.geneslist = readLines(self.genesfile, col=0)
         if self.genesfile2 != None:
-            self.geneslist2 = readLines(self.genesfile2)
+            self.geneslist2 = readLines(self.genesfile2, col=0)
         return True
 
     def run(self):
-        extractGeneSubset(self.adjfile, self.outfile, self.geneslist, both=self.both, genes2=self.geneslist2)
+        if self.cyto:
+            extractGeneSubsetCyto(self.adjfile, self.outfile, self.geneslist, both=self.both, genes2=self.geneslist2)
+        else:
+            extractGeneSubset(self.adjfile, self.outfile, self.geneslist, both=self.both, genes2=self.geneslist2)
 
 def addToSeen(seen, g1, g2):
     """Record the fact that an edge connecting `g1' and `g2' was seen in the current network."""
@@ -615,6 +645,43 @@ def wasNotSeen(seen, g1, g2):
         return not (g2 in seen[g1])
     else:
         return True
+
+def extractGeneSubsetCyto(infile, outfile, genes, both=False, genes2=None):
+    """Like extractGeneSubset, but the input file is assumed to be in cytoscape format, and
+all columns are copied to the output."""
+    extracted = 0
+    paired = (genes2 != None)
+    if paired:
+        message("Extracting {} and {} genes from {} (paired mode)", len(genes), len(genes2), infile)
+    else:
+        message("Extracting {} genes from {} (both={})", len(genes), infile, both)
+    if outfile == None:
+        out = sys.stdout
+    else:
+        out = open(outfile, "w")
+    try:
+        with genOpen(infile, "r") as f:
+            out.write(f.readline()) # copy header as-is
+            for line in f:
+                parsed = line.rstrip("\n").split("\t")
+                hub = parsed[0]
+                other = parsed[1]
+                if paired:
+                    found = ((hub in genes) and (other in genes2) or (hub in genes2) and (other in genes))
+                    if found:
+                        out.write(line)
+                        extracted += 1
+                elif both:
+                    if (hub in genes) and (other in genes):
+                        out.write(line)
+                        extracted += 1
+                elif (hub in genes) or (other in genes):
+                    out.write(line)
+                    extracted += 1
+    finally:
+        if outfile != None:
+            out.close()
+    message("{} edges extracted.".format(extracted))
 
 def extractGeneSubset(infile, outfile, genes, both=False, genes2=None):
     """Extract only the edges where one of the two genes belongs to the `genes' list
@@ -728,6 +795,8 @@ rows (ie, the average number of elements in each row)."""
             if not line[0] == ">":
                 nrows += 1
                 nfields += (line.count("\t") / 2)
+
+    nfields = int(nfields / 2.0) # Each edge appears twice in an ADJ file!
     if nrows == 0:
         return (nrows, nfields, 0)
     else:
@@ -777,7 +846,7 @@ class histogramCommand(toplevelCall):
     longdesc = """This command computes the histogram of MI values for the edges in the specified .adj file.
 The following options are available:
   [-o outfile] - write output to `outfile' instead of standard output.
-  [-n nbins]   - Specifiy number of bins to use (100 by default).
+  [-n nbins]   - Specify number of bins to use (100 by default).
   [-r min max] - Only consider values between `min' and `max' (by default, the whole range of MIs is used).
   [-v]         - If specified, values higher than `max' are added to the last bin.
   [-s]         - If specified, the histogram is computed on the sum of the MIs of each row.
@@ -827,6 +896,7 @@ The following options are available:
                       low=self.low, high=self.high, overflow=self.overflow)
 
 def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=None, high=None, overflow=False):
+    print (summi, low, high, overflow)
     mis = []
     bins = [None for i in range(nbins+1)]
     outstream = sys.stdout
@@ -977,16 +1047,17 @@ class randomCommand(toplevelCall):
     outfile = None
     genesfile = None
     nsamples = None
+    genecols = 2
 
     name = "random"
-    argdesc = "[-o outfile] [-nb nsamples] genesfile"
+    argdesc = "[-o outfile] [-nb nsamples] [-gc genecols] genesfile"
     shortdesc = "generate random expression data for the genes in `genesfile' on `nsamples' samples using a negative binomial distribution."
     longdesc = """
 This command generates a simulated gene expression dataset, using one of two different methods:
 
-  If -nb is specified, the program will generate `nsamples' values for each gene listed in the first 
-  column of file `genesfile', using a negative binomial distribution. The output file will have a
-  number of columns equal to nsamples+2, with the first two columns containing the gene name.
+  If -nb is specified, the program will generate `nsamples' values for each gene listed in file
+  `genesfile' (one gene per line), using a negative binomial distribution. The output file will 
+  have a number of columns equal to nsamples+1, with the first column containing the gene name.
 
   Otherwise, the expression values in `genesfile' (all values in the row except for the first two)
   will be shuffled.
@@ -1002,7 +1073,7 @@ Output will be written to standard output or to the file specified with the -o o
         next = ""
 
         for a in args:
-            if a in ["-o", "-nb"]:
+            if a in ["-o", "-nb", "-gc"]:
                 next = a
             elif next == "-o":
                 self.outfile = a
@@ -1014,6 +1085,10 @@ Output will be written to standard output or to the file specified with the -o o
                     return False
                 else:
                     self.nsamples = n
+                next = ""
+            elif next == "-gc":
+                self.genecols = ensureInt(a)
+                next = ""
             else:
                 self.genesfile = a
 
@@ -1031,12 +1106,12 @@ Output will be written to standard output or to the file specified with the -o o
         if self.nsamples:
             doRandomDataset(self.genesfile, self.nsamples, outfile=self.outfile)
         else:
-            doShuffledDataset(self.genesfile, outfile=self.outfile)
+            doShuffledDataset(self.genesfile, outfile=self.outfile, genecols=self.genecols)
 
 def doRandomDataset(genesfile, nsamples, outfile=None):
     print "Generating random dataset with {} samples.".format(nsamples)
     with open(outfile, "w") as out:
-        out.write("GeneId\tGeneName\n")
+        out.write("GeneId\t")
         for i in range(0, nsamples):
             out.write("\tSample{}".format(i+1))
         out.write("\n")
@@ -1046,12 +1121,12 @@ def doRandomDataset(genesfile, nsamples, outfile=None):
                 gene = gene.rstrip("\n\r")
                 r = random.randint(1, nsamples)
                 p = random.uniform(0.0, 1.0)
-                out.write("{}\t{}".format(gene, gene))
+                out.write("{}".format(gene))
                 for i in range(0, nsamples):
                     out.write("\t{}".format(numpy.random.negative_binomial(r, p)))
                 out.write("\n")
 
-def doShuffledDataset(infile, outfile=None):
+def doShuffledDataset(infile, outfile=None, genecols=2):
     print "Shuffling dataset {}.".format(infile)
     out = sys.stdout
     if outfile != None:
@@ -1062,9 +1137,11 @@ def doShuffledDataset(infile, outfile=None):
         with open(infile, "r") as f:
             for line in f:
                 parsed = line.rstrip("\n").split("\t")
-                values = parsed[2:]
+                values = parsed[genecols:]
                 random.shuffle(values)
-                out.write("{}\t{}".format(parsed[0], parsed[1]))
+                out.write("{}".format(parsed[0]))
+                for i in range(1, genecols):
+                    out.write("\t{}".format(parsed[i]))
                 for x in values:
                     out.write("\t{}".format(x))
                 out.write("\n")
@@ -1225,12 +1302,21 @@ This command converts between different file formats, according to the specified
   nc - convert from networkData format to cytoscape [-s]
   ca - convert from cytoscape format to adj
   co - convert from cytoscape format to connections
-  ac - convert from adj to cytoscape
-  ax - convert from adj to CX [-d, -m]
+  ac - convert from adj to cytoscape [-f]
+  ax - convert from adj to CX [-d, -m, -a]
+  cx - convert from cytoscape to CX [-d, -m, -a]
 
 Formats:
 cytocscape: gene1, gene2, mi
 connection: hub, number of connected genes, list of connected genes
+
+Options:
+ -f F   Read FPR values from file F and add them as extra column to the cytoscape file
+ -s S   Discard edges with support below S
+ -d D   Only write edges with degree >= D
+ -m M   Show top M genes by decreasing degree
+ -a F   Read network attributes from file F 
+ -n F   Read gene attributes from file F
 """
 
     def parse(self, args):
@@ -1238,6 +1324,7 @@ connection: hub, number of connected genes, list of connected genes
         next = ""
         nargs = 0
         for a in args:
+            # print a
             if next != "": # == "-s":
                 self.options[next] = a
                 # self.support = ensureInt(a)
@@ -1253,6 +1340,8 @@ connection: hub, number of connected genes, list of connected genes
             elif nargs == 2:
                 self.outfile = a
                 nargs += 1
+            # print self.options, nargs, next
+        # print self.operator, self.infile, self.outfile
         if nargs < 3:
             print "This command requires three arguments."
             return False
@@ -1269,11 +1358,13 @@ connection: hub, number of connected genes, list of connected genes
         elif op == "co":
             cytoscapeToConn(self.infile, self.outfile)
         elif op == "ac":
-            AdjToCytoscape(self.infile, self.outfile)
+            AdjToCytoscape(self.infile, self.outfile, self.options)
         elif op == "ax":
             AdjToCx(self.infile, self.outfile, self.options)
+        elif op == "cx":
+            AdjToCx(self.infile, self.outfile, self.options, className=CXwriter.CXwriterCyto)
         else:
-            print "Operator should be one of: na, nc, ca, co, ax."
+            print "Operator should be one of: na, nc, ca, co, ac, ax, cx."
 
 def networkToAdj(infile, outfile, options):
     if "-s" in options:
@@ -1323,16 +1414,49 @@ def cytoscapeToAdj(infile, outfile):
                     out.write("\t{}\t{}".format(parsed[1], parsed[2]))
         out.write("\n")
 
-def AdjToCytoscape(infile, outfile):
+def readHistogram(filename):
+    sys.stderr.write("Reading MI histogram from {}\n".format(filename))
+    hist = []
+    with genOpen(filename, "r") as f:
+        f.readline()
+        for line in f:
+            parsed = line.rstrip("\n").split("\t")
+            hist.append((float(parsed[0]), float(parsed[4])))
+    return hist
+
+def findFPR(histogram, mi):
+    first = histogram[0]
+    if mi >= first[0]:
+        return first[1]
+
+    for second in histogram[1:]:
+        if mi >= second[0]:
+            alpha = (mi - second[0]) / (first[0] - second[0])
+            return first[1] * alpha + second[1] * (1 - alpha)
+        first = second
+    return 1.0
+
+def AdjToCytoscape(infile, outfile, options):
     seen = {}
     extracted = 0
     rev = 0
+
+    # print (infile, outfile, options)
+
+    if "-f" in options:
+        histogram = readHistogram(options["-f"])
+    else:
+        histogram = False
+
     if outfile == None:
         out = sys.stdout
     else:
         out = open(outfile, "w")
     try:
-        out.write("#Gene1\tGene2\tMI\n")
+        if histogram:
+            out.write("#Gene1\tGene2\tMI\tFPR\n")
+        else:
+            out.write("#Gene1\tGene2\tMI\n")
         with genOpen(infile, "r") as f:
             for line in f:
                 if line[0] != ">":
@@ -1354,20 +1478,30 @@ def AdjToCytoscape(infile, outfile):
         for (key, mi) in seen.iteritems():
             extracted += 1
             w = key.split(":")
-            out.write("{}\t{}\t{}\n".format(w[0], w[1], mi))
+            if histogram:
+                fpr = findFPR(histogram, mi)
+                out.write("{}\t{}\t{}\t{}\n".format(w[0], w[1], mi, fpr))
+            else:
+                out.write("{}\t{}\t{}\n".format(w[0], w[1], mi))
     finally:
         if outfile != None:
             out.close()
     message("{} edges extracted, {} reverse.".format(extracted, rev))
 
-def AdjToCx(infile, outfile, options):
-    C = CXwriter.CXwriter(infile)
+def AdjToCx(infile, outfile, options, className=CXwriter.CXwriter):
+    attributes = {}
+    nodeAttrs = None
+    C = className(infile)
     if "-d" in options:
         C.mindegree = ensureInt(options["-d"])
     if "-m" in options:
         C.maxnodes = ensureInt(options["-m"])
+    if "-a" in options and ensureFile(options["-a"]):
+        attributes = readAttributes(options["-a"])
+    if "-n" in options and ensureFile(options["-n"]):
+        nodeAttrs = CXwriter.AttrReader(options["-n"])
     with open(outfile, "w") as out:
-        C.writeNetwork(stream=out)
+        C.writeNetwork(stream=out, attributes=attributes, nodeAttributes=nodeAttrs)
 
 class hubConnections():
     hub = ""

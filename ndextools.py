@@ -46,6 +46,14 @@ def uploadNetwork(cxfile):
             sys.stdout.write("Error: network `{}' is invalid.\n{}\n".format(netid, summary['errorMessage']))
             return ""
 
+def setNetworkSample(netid, cxfile):
+    with open(cxfile, "r") as f:
+        cxstring = f.read()
+
+    with NdexClient() as n:
+        n.set_network_sample(netid, cxstring)
+    return True # n.get_sample_network(netid)
+
 def displaySummary(summ):
     print summ
     for field in ['externalId', 'owner', 'name', 'description', 'nodeCount', 'edgeCount']:
@@ -95,4 +103,7 @@ if __name__ == "__main__":
             networkSummary(args[1])
         elif args[0] == "delete":
             sys.stdout.write("{}\tdeleted\n".format(deleteNetwork(args[1])))
-
+        elif args[0] == "sample":
+            netid = args[1]
+            cxfile = args[2]
+            print setNetworkSample(netid, cxfile)

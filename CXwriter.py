@@ -16,6 +16,7 @@ class AttrReader():
         print "reading " + filename
         with open(filename, "r") as f:
             self.attnames = f.readline().rstrip("\r\n").split("\t")[1:]
+            self.attnames = [ "<b>Approved name</b>" if x == "Approved name" else x for x in self.attnames]
             for line in f:
                 fields = line.rstrip("\r\n").split("\t")
                 self.attrs[fields[0]] = fields[1:]
@@ -364,11 +365,11 @@ class CXwriter():
   "RefSeq accession" : "http://identifiers.org/refseq/",
   "UCSC gene ID" : "http://genome.ucsc.edu/cgi-bin/hgGene?org=human&db=hg38&hgg_gene=",
   "UNIPROT ACCESSION" : "http://uri.ndexbio.org/ns/15a017bb-6196-11e5-8ac5-06603eb7f303/UNIPROT_ACCESSION/",
-  "UniProt accession" : "http://uri.ndexbio.org/ns/15a017bb-6196-11e5-8ac5-06603eb7f303/UNIPROT_ACCESSION/",
+  "UniProt accession" : "http://identifiers.org/uniprot/",
   "UniProt Isoform" : "http://identifiers.org/uniprot.isoform/",
   "UniProt Knowledgebase" : "http://identifiers.org/uniprot/",
-  "VEGA" : "http://uri.ndexbio.org/ns/15a017bb-6196-11e5-8ac5-06603eb7f303/VEGA/",
-  "Vega gene ID" : "http://uri.ndexbio.org/ns/15a017bb-6196-11e5-8ac5-06603eb7f303/VEGA/"
+  "VEGA" : "http://vega.archive.ensembl.org/Homo_sapiens/Gene/Summary?g=",
+  "Vega gene ID" : "http://vega.archive.ensembl.org/Homo_sapiens/Gene/Summary?g="
 }]}""")
 
     def writeClosing(self, stream):

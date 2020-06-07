@@ -10,17 +10,28 @@
 #####################################################
 
 import sys
+import time
+import os.path
 
 import ndex.client
 from requests.exceptions import HTTPError
 
+CONFFILE = "~/.ndexrc"
+
 class NdexClient():
     ndex = None
-    host="http://dev.ndexbio.org"
-    username="ariva"
-    password="b1g:n3ts"
+    host = "http://test.ndexbio.org"
+    username = ""
+    password = ""
+
+    def readConfiguration(self):
+        with open(os.path.expanduser(CONFFILE), "r") as f:
+            self.host = f.readline().strip()
+            self.username = f.readline().strip()
+            self.password = f.readline().strip()
 
     def __enter__(self):
+        self.readConfiguration()
         self.ndex = ndex.client.Ndex(host=self.host, username=self.username, password=self.password)
         return self.ndex
 
@@ -38,13 +49,38 @@ def uploadNetwork(cxfile):
             url = n.save_cx_stream_as_new_network(f)
         sp = url.rfind("/")
         netid = url[sp+1:]
-        summary = n.get_network_summary(netid)
+    sys.stderr.write("Network {} uploaded, ID={}\n".format(cxfile, netid))
+    return netid
+
+def verifyNetwork(n, netid, delay=5, retries=5):
+    sys.stderr.write("Verifying network {}\n".format(netid))
+    while True:
+        try:
+            summary = n.get_network_summary(netid)
+        except HTTPError as e:
+            return (False, e)
         valid = summary['isValid']
         if valid:
-            return netid
+            return (True, netid)
+        elif summary['errorMessage']:
+            return (False, summary['errorMessage'])
         else:
-            sys.stdout.write("Error: network `{}' is invalid.\n{}\n".format(netid, summary['errorMessage']))
-            return ""
+            retries -= 1
+            sys.stderr.write("Retrying {}\n".format(retries))
+            if retries == 0:
+                return (False, False)
+        time.sleep(delay)
+
+def verifyNetworks(netids, delay=5, retries=5):
+    with NdexClient() as n:
+        for netid in netids:
+            (flag, msg) = verifyNetwork(n, netid, delay=delay, retries=retries)
+            if flag:
+                sys.stdout.write("{}\tuploaded\tOk\n".format(netid))
+            elif msg:
+                sys.stdout.write("{}\terror\t{}\n".format(netid, msg))
+            else:
+                sys.stdout.write("{}\terror\tunknown - retries exhausted\n".format(netid))
 
 def setNetworkSample(netid, cxfile):
     with open(cxfile, "r") as f:
@@ -55,7 +91,6 @@ def setNetworkSample(netid, cxfile):
     return True # n.get_sample_network(netid)
 
 def displaySummary(summ):
-    print summ
     for field in ['externalId', 'owner', 'name', 'description', 'nodeCount', 'edgeCount']:
         sys.stdout.write("{}: {}\n".format(field, summ[field]))
     props = summ['properties']
@@ -76,19 +111,45 @@ def networkSummary(netid):
         displaySummary(result)
         return result
 
-def deleteNetwork(netid):
-    with NdexClient() as n:
+def deleteNetwork(n, netid):
+    try:
         n.delete_network(netid)
-    return netid
+        return (True, netid)
+    except HTTPError as e:
+        return (False, e)
+
+def deleteNetworks(netids):
+    with NdexClient() as n:
+        for netid in netids:
+            (flag, msg) = deleteNetwork(n, netid)
+            if flag:
+                sys.stdout.write("{}\tdeleted\tOk\n".format(netid))
+            else:
+                sys.stdout.write("{}\terror\t{}\n".format(netid, msg))
+
+### Top level
+
+def usage(what=None):
+    sys.stdout.write("""ndextools - Command-line interface to the ndexbio website
+
+Usage: ndextools.py command [arguments]
+
+where command is one of: upload, sample, verify, search, summary, delete.
+
+""")
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if args:
+    if not args or "-h" in args:
+        usage()
+    else:
         if args[0] == "upload":
-            cxfile = args[1]
-            netid = uploadNetwork(cxfile)
-            if netid:
-                sys.stdout.write("{}\tuploaded\t{}\n".format(netid, cxfile))
+            netids = []
+            for cxfile in args[1:]:
+                netids.append(uploadNetwork(cxfile))
+            verifyNetworks(netids)
+        elif args[0] == "verify":
+            verifyNetworks(args[1:])
         elif args[0] == "search":
             term = args[1]
             if len(args) > 2:
@@ -102,8 +163,10 @@ if __name__ == "__main__":
         elif args[0] == "summary":
             networkSummary(args[1])
         elif args[0] == "delete":
-            sys.stdout.write("{}\tdeleted\n".format(deleteNetwork(args[1])))
+            deleteNetworks(args[1:])
         elif args[0] == "sample":
             netid = args[1]
             cxfile = args[2]
             print setNetworkSample(netid, cxfile)
+        else:
+            usage()

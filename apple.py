@@ -10,13 +10,16 @@
 #####################################################
 
 import sys
+import csv
 import glob
 import math
 import gzip
+import time
 import os.path
 import random
 import sqlite3
 from scipy.stats import norm
+import numpy
 import numpy.random
 import CXwriter
 
@@ -233,6 +236,7 @@ class consensusCommand(toplevelCall):
     bonf = True
     support = None
     fraction = None
+    ngenes = 30000
 
     name = "consensus"
     argdesc = "[options] outfile infiles..."
@@ -245,6 +249,7 @@ This command generates a consensus network from a list of .adj files (usually ge
   [-nb]           - If specified, disables Bonferroni correction (used with -p).
   [-s support]    - Only output edges found in at least `support' bootstrap files.
   [-f fraction]   - Like -s, but determines the support in order to have the specified fraction of edges in output.
+  [-n ngenes]     - Number of genes in the expression dataset (default: 30000).
 """
 
     def parse(self, args):
@@ -276,7 +281,10 @@ This command generates a consensus network from a list of .adj files (usually ge
                     print "The value of -f should be a number between 0 and 1."
                     return False
                 next = ""
-            elif arg in ["-p", "-c", "-d", "-s", "-f"]:
+            elif next == "-n":
+                self.ngenes = ensureInt(arg)
+                next = ""
+            elif arg in ["-p", "-c", "-d", "-s", "-f", "-n"]:
                 next = arg
             elif arg == "-nb":
                 bonf=False
@@ -304,10 +312,10 @@ This command generates a consensus network from a list of .adj files (usually ge
             print "  Network data to: {}".format(self.datafile)
         if self.csvfile:
             print "  Support counts to: {}".format(self.csvfile)
-        bs = bstable()
+        bs = bstableNP(self.ngenes)
         bs.loadAllBootstrap(infiles)
         bs.computeMuSigma()
-        bs.supportDist = bs.supportDistribution()
+        bs.supportDist = bs.supportDistribution(len(infiles))
         print bs.supportDist
         if self.pval:
             bs.saveConsensusByPval(outfile, self.pval, bs.getTableHeader(infiles[0]), bonferroni=self.bonf)
@@ -351,7 +359,10 @@ class bstable():
 
     def decodeName(self, nameid):
         """Return the name associated with index `nameid' (this is the inverse of internName)."""
-        return self.invnames[nameid]
+        if nameid in self.invnames:
+            return self.invnames[nameid]
+        else:
+            return None
 
     def addEdge(self, hub, gene, mi):
         """Add an edge from `hub' to `gene', with mutual information `mi'."""
@@ -412,17 +423,21 @@ bstable, giving it index `idx'."""
     def loadAllBootstrap(self, filenames):
         """Load all the files in the list `filenames' into the current bstable."""
         idx = 1
+        start = time.time()
         prevedges = 0
+
         for filename in filenames:
             if os.path.isfile(filename):
                 print "Parsing {}...".format(filename),
                 self.loadBootstrap(filename, idx)
                 newedges = self.countEdges()
+                now = time.time()
                 if prevedges == 0:
-                    print "{} edges.".format(newedges)
+                    print "{} edges ({} secs).".format(newedges, int(now - start))
                 else:
-                    print "{} edges ({}% increase).".format(newedges, int(round(100 * (newedges-prevedges)/prevedges)))
+                    print "{} edges ({}% increase) ({} secs).".format(newedges, int(round(100 * (newedges-prevedges)/prevedges)), int(now - start))
                 prevedges = newedges
+                start = now
                 idx += 1
             else:
                 print "File {} does not exist, skipping.".format(filename)
@@ -434,7 +449,8 @@ bstable, giving it index `idx'."""
             prob = 1.0 * self.totedge[i+1] / totedge
             self.mu += prob
             self.sigma += prob * (1 - prob)
-        self.sigma = math.sqrt(self.sigma)
+        if self.sigma > 0:
+            self.sigma = math.sqrt(self.sigma)
         print "Mu = {}, Sigma = {}".format(self.mu, self.sigma)
 
     def getpval(self, support):
@@ -475,8 +491,8 @@ times it occurs in totsupport."""
         print "Saving support distribution to {}...".format(csvfile)
         with open(csvfile, "w") as out:
             out.write("#Support\tCount\n")
-            for (supp, cnt) in self.supportDist.iteritems():
-                out.write("{}\t{}\n".format(supp, cnt))
+            for supp in sorted(self.supportDist.keys()):
+                out.write("{}\t{}\n".format(supp, self.supportDist[supp]))
 
     def saveConsensusByPval(self, filename, pval, header, bonferroni=True):
         if bonferroni:
@@ -502,7 +518,7 @@ times it occurs in totsupport."""
         return nwritten
 
     def saveConsensusBySupport(self, filename, minsupport, header):
-        print "Saving consensus network to {} (by support)...".format(filename)
+        print "Saving consensus network to {} (by support={})...".format(filename, minsupport)
         nwritten = 0
         with open(filename, "w") as out:
             out.write(header)
@@ -519,6 +535,72 @@ times it occurs in totsupport."""
         print "{} edges written to consensus network.".format(nwritten)
 
         return nwritten
+
+class bstableNP(bstable):
+    supportArray = None
+    miArray = None
+    ngenes = 30000
+
+    def __init__(self, ngenes):
+        self.ngenes = ngenes
+        self.names = {}
+        self.invnames = {}
+        self.totedge = {}
+        self.pvalues = {}
+        self.supportArray = numpy.zeros((self.ngenes, self.ngenes), dtype=numpy.int32)
+        self.miArray = numpy.zeros((self.ngenes, self.ngenes), dtype=numpy.float32)
+
+    def countEdges(self):
+        """Returns the total number of edges currently in this bstable."""
+        return numpy.count_nonzero(self.supportArray) / 2
+
+    def addEdge(self, hub, gene, mi):
+        """Add an edge from `hub' to `gene', with mutual information `mi'."""
+        hubid = self.internName(hub)
+        geneid = self.internName(gene)
+        self.supportArray[hubid, geneid] += 1
+        self.miArray[hubid, geneid] += mi
+
+    def supportDistribution(self, max): ### *** hack! remove!
+        """Returns a dictionary mapping each support count (ie,
+number of bootstrap files an edge appears in) to the number of
+times it occurs in totsupport."""
+        dist = dict(zip(*numpy.unique(self.supportArray, return_counts=True)))
+        del(dist[0])
+        for x in dist.keys():
+            if x > max:
+                del(dist[x])
+        return dist
+
+    def saveConsensusBySupport(self, filename, minsupport, header):
+        print "Saving consensus network to {} (by support={})...".format(filename, minsupport)
+        start = time.time()
+        nwritten = 0
+        with open(filename, "w") as out:
+            out.write(header)
+            for hub in xrange(self.ngenes):
+                hubName = self.decodeName(hub)
+                if not hubName:
+                    continue
+                empty = True
+                for gene in xrange(self.ngenes):
+                    geneName = self.decodeName(gene)
+                    if not geneName:
+                        continue
+                    support = self.supportArray[hub, gene]
+                    if support >= minsupport:
+                        if empty:
+                            out.write(hubName)
+                            empty = False
+                        out.write("\t" + geneName + "\t" + str(self.miArray[hub, gene] / support))
+                        nwritten += 1
+                if not empty:
+                    out.write("\n")
+        now = time.time()
+        print "{} edges written to consensus network ({} mins).".format(nwritten, (now - start) / 60)
+
+        return nwritten
+
 
 class bstableDB(bstable):
     DBconn = None
@@ -910,7 +992,7 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
 
     with genOpen(filename, "r") as f:
         for line in f:
-            if not line[0] == ">":
+            if line[0] != ">":
                 parsed = line.rstrip("\n").split("\t")
                 if summi:
                     tot = 0
@@ -922,6 +1004,11 @@ def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=No
                     for i in range(2, len(parsed), 2):
                         mi = float(parsed[i])
                         mis.append(mi)
+                        
+    if not mis:
+        message("No MIs - terminating.")
+        return False
+
     mis.sort()
     message("Actual MI range: {} - {}", mis[0], mis[-1])
     if mifile != None:
@@ -1299,6 +1386,7 @@ class convertCommand(toplevelCall):
 This command converts between different file formats, according to the specified `op'. `op' can be one of:
 
   na - convert from networkData format to adj [-s]
+  ma - convert from MI matrix to adj [-t]
   nc - convert from networkData format to cytoscape [-s]
   ca - convert from cytoscape format to adj
   co - convert from cytoscape format to connections
@@ -1314,6 +1402,7 @@ Options:
  -f F   Read FPR values from file F and add them as extra column to the cytoscape file
  -s S   Discard edges with support below S
  -d D   Only write edges with degree >= D
+ -t T   Use MI threshold of T
  -m M   Show top M genes by decreasing degree
  -a F   Read network attributes from file F 
  -n F   Read gene attributes from file F
@@ -1351,6 +1440,8 @@ Options:
         op = self.operator
         if op == "na":
             networkToAdj(self.infile, self.outfile, self.options)
+        elif op == 'ma':
+            matrixToAdj(self.infile, self.outfile, self.options)
         elif op == "nc":
             networkToCytoscape(self.infile, self.outfile, self.options)
         elif op == "ca":
@@ -1364,7 +1455,7 @@ Options:
         elif op == "cx":
             AdjToCx(self.infile, self.outfile, self.options, className=CXwriter.CXwriterCyto)
         else:
-            print "Operator should be one of: na, nc, ca, co, ac, ax, cx."
+            print "Operator should be one of: na, ma, nc, ca, co, ac, ax, cx."
 
 def networkToAdj(infile, outfile, options):
     if "-s" in options:
@@ -1394,6 +1485,38 @@ def networkToAdj(infile, outfile, options):
             for g in genes:
                 out.write("\t{}\t{}".format(g[0], g[1]))
             out.write("\n")
+
+def matrixToAdj(infile, outfile, options):
+    if "-t" in options:
+        threshold = ensureFloat(options["-t"])
+    else:
+        threshold = 0.0
+
+    with open(outfile, "w") as out:
+        with open(infile, "r") as f:
+            c = csv.reader(f, delimiter='\t')
+            genes = c.next()
+            genes = [ g.strip('"') for g in genes ]
+            ngenes = len(genes)
+            for line in c:
+                toWrite = []
+                tw = 0
+                vi = 1
+                hub = line[0].strip('"')
+                for gi in range(ngenes):
+                    mi = float(line[vi])
+                    if mi > threshold:
+                        toWrite.append((genes[gi], line[vi]))
+                        tw += 1
+                    vi += 1
+                if tw > 0:
+                    out.write(hub)
+                    for w in toWrite:
+                        out.write("\t")
+                        out.write(w[0])
+                        out.write("\t")
+                        out.write(w[1])
+                    out.write("\n")
 
 def cytoscapeToAdj(infile, outfile):
     current = ""
@@ -1453,10 +1576,7 @@ def AdjToCytoscape(infile, outfile, options):
     else:
         out = open(outfile, "w")
     try:
-        if histogram:
-            out.write("#Gene1\tGene2\tMI\tFPR\n")
-        else:
-            out.write("#Gene1\tGene2\tMI\n")
+        out.write("#Gene1\tGene2\tMI\tFPR\n")
         with genOpen(infile, "r") as f:
             for line in f:
                 if line[0] != ">":
@@ -1465,24 +1585,24 @@ def AdjToCytoscape(infile, outfile, options):
 
                     for i in range(1, len(parsed), 2):
                         gene = parsed[i]
-                        rkey = gene + ":" + hub
+                        rkey = gene + "#" + hub
                         if rkey in seen:
                             rev += 1
                             seen[rkey] = (seen[rkey] + float(parsed[i+1])) / 2.0
                             # del seen[rkey]
                         else:
-                            key = hub + ":" + gene
+                            key = hub + "#" + gene
                             seen[key] = float(parsed[i+1])
                             #out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                             #extracted += 1
         for (key, mi) in seen.iteritems():
             extracted += 1
-            w = key.split(":")
+            w = key.split("#")
             if histogram:
                 fpr = findFPR(histogram, mi)
-                out.write("{}\t{}\t{}\t{}\n".format(w[0], w[1], mi, fpr))
             else:
-                out.write("{}\t{}\t{}\n".format(w[0], w[1], mi))
+                fpr = 0.0
+            out.write("{}\t{}\t{}\t{}\n".format(w[0], w[1], mi, fpr))
     finally:
         if outfile != None:
             out.close()

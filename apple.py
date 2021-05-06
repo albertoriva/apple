@@ -174,16 +174,16 @@ Each output file will have the same number of columns as the input file (unless 
                 self.filename = a
                 seen += 1
                 if not ensureFile(self.filename):
-                    print "File {} does not exist.".format(self.filename)
+                    sys.stdout.write("File {} does not exist.\n".format(self.filename))
                     return False
             else:
                 self.nrounds = ensureInt(a)
                 seen += 1
                 if not self.nrounds:
-                    print "Argument `{}' should be a number.".format(args[1])
+                    sys.stdout.write("Argument `{}' should be a number.\n".format(args[1]))
                     return False
         if seen < 2:
-            print "Error: bootstrap requires filename and nrounds."
+            sys.stdout.write("Error: bootstrap requires filename and nrounds.\n")
             return False
         return True
 
@@ -208,7 +208,7 @@ obtained by bootstrapping its columns. Returns the list of new filenames."""
         outfilename = name + "-{}".format(i) + ext
         outfiles.append(outfilename)
 
-        print "Writing {} ".format(outfilename)
+        sys.stderr.write("Writing {}\n".format(outfilename))
         with open(outfilename, "w") as o:
             with open(filename, "r") as f:
                 for line in f:
@@ -260,7 +260,7 @@ This command generates a consensus network from a list of .adj files (usually ge
             if next == "-p":
                 self.pval = ensureFloat(arg)
                 if not self.pval:
-                    print "The value of -p should be a P-value."
+                    sys.stdout.write("The value of -p should be a P-value.\n")
                     return False
                 next = ""
             elif next == "-d":
@@ -272,13 +272,13 @@ This command generates a consensus network from a list of .adj files (usually ge
             elif next == "-s":
                 self.support = ensureInt(arg)
                 if self.support == None:
-                    print "The value of -s, `{}', should be an integer number.".format(arg)
+                    sys.stdout.write("The value of -s, `{}', should be an integer number.\n".format(arg))
                     return False
                 next = ""
             elif next == "-f":
                 self.fraction = ensureFloat(arg)
                 if not self.fraction:
-                    print "The value of -f should be a number between 0 and 1."
+                    sys.stdout.write("The value of -f should be a number between 0 and 1.\n")
                     return False
                 next = ""
             elif next == "-n":
@@ -294,7 +294,7 @@ This command generates a consensus network from a list of .adj files (usually ge
                 self.infiles.append(arg)
 
         if self.outfile == None or len(self.infiles) == 0:
-            print "The consensus command requires an output file and one or more input files."
+            sys.stdout.write("The consensus command requires an output file and one or more input files.\n")
             return False
 
         return True
@@ -404,14 +404,20 @@ class bstable():
         """Load a bootstrap file `filename' into the current
 bstable, giving it index `idx'."""
         numedges = 0
+        rownum = 0
         with genOpen(filename, "r") as f:
             for line in f:
+                rownum += 1
                 if line[0] != ">":
                     parsed = line.rstrip("\n").split("\t")
                     hub = parsed[0]
                     for i in range(1, len(parsed), 2):
                         gene = parsed[i]
-                        mi = float(parsed[i+1])
+                        try:
+                            mi = float(parsed[i+1])
+                        except ValueError as e:
+                            sys.stderr.write("Error in file `{}', line {}: {} is not a float.\n".format(filename, rownum, parsed[i+1]))
+                            raise e
                         self.addEdge(hub, gene, mi)
                         numedges += 1
                         # if numedges % 10000 == 0:

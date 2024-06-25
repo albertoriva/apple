@@ -167,6 +167,6 @@ if __name__ == "__main__":
         elif args[0] == "sample":
             netid = args[1]
             cxfile = args[2]
-            print setNetworkSample(netid, cxfile)
+            print(setNetworkSample(netid, cxfile))
         else:
             usage()

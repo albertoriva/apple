@@ -13,7 +13,7 @@ class AttrReader():
     attrs = {}
 
     def __init__(self, filename):
-        print "reading " + filename
+        print("reading " + filename)
         with open(filename, "r") as f:
             self.attnames = f.readline().rstrip("\r\n").split("\t")[1:]
             self.attnames = [ "<b>Approved name</b>" if x == "Approved name" else x for x in self.attnames]
@@ -72,7 +72,7 @@ class CXwriter():
         comma = False
         stream.write("""{
   "networkAttributes" : [ """)
-        for name, value in fields.iteritems():
+        for name, value in fields.items():
             if comma:
                 stream.write(", ")
             stream.write('{\n    "n" : "' + name + '",\n    "v" : "' + value + '"\n  }')
@@ -124,7 +124,7 @@ class CXwriter():
         """Return the highest and lowest number of edges for any node in this network."""
         maxd = 0
         mind = 100000000
-        for e in self.nedges.values():
+        for e in list(self.nedges.values()):
             if e > maxd:
                 maxd = e
             if e < mind:
@@ -150,7 +150,7 @@ class CXwriter():
     def filterNodesByDegree(self):
         """Set to invisible all nodes with a degree smaller than self.mindegree."""
         nvisible = 0
-        for (node, deg) in self.nedges.iteritems():
+        for (node, deg) in self.nedges.items():
             if deg >= self.mindegree:
                 self.visibleNodes[node] = True
                 nvisible += 1
@@ -161,7 +161,7 @@ class CXwriter():
     def filterHighestDegree(self):
         """Set as visible the first self.maxnodes nodes in order of decreasing degree, and hide the rest."""
         lowdegree = 0
-        degs = [(deg, node) for (node, deg) in self.nedges.iteritems() ]
+        degs = [(deg, node) for (node, deg) in self.nedges.items() ]
         degs.sort(key=lambda d: d[0], reverse=True)
         good = degs[:self.maxnodes]
         bad = degs[self.maxnodes:]
@@ -177,7 +177,7 @@ class CXwriter():
         self.nodesWritten = 0
         comma = False
         stream.write('{  "nodes" : [ ')
-        for node, idx in self.nodesdb.iteritems():
+        for node, idx in self.nodesdb.items():
             if self.visibleNodes[node]:
                 if comma:
                     stream.write(", ")
@@ -189,7 +189,7 @@ class CXwriter():
         if attributes:
             stream.write(', {  "nodeAttributes" : [ ')
             comma = False
-            for node, idx in self.nodesdb.iteritems():
+            for node, idx in self.nodesdb.items():
                 if self.visibleNodes[node]:
                     attrs = attributes.attributesFor(node)
                     if attrs:
@@ -294,7 +294,7 @@ class CXwriter():
         # Write node properties
         (maxd, mind) = self.getMaxMinDegree()
         comma = False
-        for node, idx in self.nodesdb.iteritems():
+        for node, idx in self.nodesdb.items():
             if self.visibleNodes[node]:
                 if comma:
                     stream.write(", ")

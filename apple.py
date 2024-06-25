@@ -302,21 +302,21 @@ This command generates a consensus network from a list of .adj files (usually ge
     def run(self):
         outfile = self.outfile
         infiles = self.infiles
-        print "Consensus reconstruction from {} input files.".format(len(infiles))
-        print "  Output to: {}".format(outfile)
+        print("Consensus reconstruction from {} input files.".format(len(infiles)))
+        print("  Output to: {}".format(outfile))
         if self.pval:
-            print "  P-value threshold: {} (Bonferroni={})".format(self.pval, self.bonf)
+            print("  P-value threshold: {} (Bonferroni={})".format(self.pval, self.bonf))
         if self.support:
-            print "  Support threshold: {}".format(self.support)
+            print("  Support threshold: {}".format(self.support))
         if self.datafile:
-            print "  Network data to: {}".format(self.datafile)
+            print("  Network data to: {}".format(self.datafile))
         if self.csvfile:
-            print "  Support counts to: {}".format(self.csvfile)
+            print("  Support counts to: {}".format(self.csvfile))
         bs = bstableNP(self.ngenes)
         bs.loadAllBootstrap(infiles)
         bs.computeMuSigma()
         bs.supportDist = bs.supportDistribution(len(infiles))
-        print bs.supportDist
+        print(bs.supportDist)
         if self.pval:
             bs.saveConsensusByPval(outfile, self.pval, bs.getTableHeader(infiles[0]), bonferroni=self.bonf)
         elif self.support:
@@ -386,7 +386,7 @@ class bstable():
     def countEdges(self):
         """Returns the total number of edges currently in this bstable."""
         n = 0
-        for (hub, table) in self.totsupport.iteritems():
+        for (hub, table) in self.totsupport.items():
             n += len(table)
         return n
 
@@ -434,19 +434,19 @@ bstable, giving it index `idx'."""
 
         for filename in filenames:
             if os.path.isfile(filename):
-                print "Parsing {}...".format(filename),
+                print("Parsing {}...".format(filename), end=' ')
                 self.loadBootstrap(filename, idx)
                 newedges = self.countEdges()
                 now = time.time()
                 if prevedges == 0:
-                    print "{} edges ({} secs).".format(newedges, int(now - start))
+                    print("{} edges ({} secs).".format(newedges, int(now - start)))
                 else:
-                    print "{} edges ({}% increase) ({} secs).".format(newedges, int(round(100 * (newedges-prevedges)/prevedges)), int(now - start))
+                    print("{} edges ({}% increase) ({} secs).".format(newedges, int(round(100 * (newedges-prevedges)/prevedges)), int(now - start)))
                 prevedges = newedges
                 start = now
                 idx += 1
             else:
-                print "File {} does not exist, skipping.".format(filename)
+                print("File {} does not exist, skipping.".format(filename))
 
     def computeMuSigma(self):
         """Compute mu and sigma for the current bstable."""
@@ -457,7 +457,7 @@ bstable, giving it index `idx'."""
             self.sigma += prob * (1 - prob)
         if self.sigma > 0:
             self.sigma = math.sqrt(self.sigma)
-        print "Mu = {}, Sigma = {}".format(self.mu, self.sigma)
+        print("Mu = {}, Sigma = {}".format(self.mu, self.sigma))
 
     def getpval(self, support):
         """Returns the P-value corresponding to `support'. Saves computed
@@ -477,8 +477,8 @@ values in the pvalues dictionary for speed."""
 number of bootstrap files an edge appears in) to the number of
 times it occurs in totsupport."""
         result = {}
-        for (hub, table) in self.totsupport.iteritems():
-            for (gene, edge) in table.iteritems():
+        for (hub, table) in self.totsupport.items():
+            for (gene, edge) in table.items():
                 support = edge[0]
                 if support in result:
                     result[support] += 1
@@ -487,14 +487,14 @@ times it occurs in totsupport."""
         return result
 
     def saveNetworkData(self, datafile):
-        print "Saving network data to {}...".format(datafile)
+        print("Saving network data to {}...".format(datafile))
         with open(datafile, "w") as out:
-            for (hub, table) in self.totsupport.iteritems():
-                for (gene, edge) in table.iteritems():
+            for (hub, table) in self.totsupport.items():
+                for (gene, edge) in table.items():
                     out.write("{}\t{}\t{}\t{}\t{}\n".format(self.decodeName(hub), self.decodeName(gene), edge[0], edge[1], self.getpval(edge[0])))
 
     def saveSupportDist(self, csvfile):
-        print "Saving support distribution to {}...".format(csvfile)
+        print("Saving support distribution to {}...".format(csvfile))
         with open(csvfile, "w") as out:
             out.write("#Support\tCount\n")
             for supp in sorted(self.supportDist.keys()):
@@ -503,15 +503,15 @@ times it occurs in totsupport."""
     def saveConsensusByPval(self, filename, pval, header, bonferroni=True):
         if bonferroni:
             pval = pval / self.countEdges()
-        print "Effective P-value threshold: {}".format(pval)
-        print "Saving consensus network to {}...".format(filename)
+        print("Effective P-value threshold: {}".format(pval))
+        print("Saving consensus network to {}...".format(filename))
         nwritten = 0
         with open(filename, "w") as out:
             out.write(header)
-            for (hub, table) in self.totsupport.iteritems():
+            for (hub, table) in self.totsupport.items():
                 if len(table) > 0:
                     out.write(self.decodeName(hub))
-                    for (gene, edge) in table.iteritems():
+                    for (gene, edge) in table.items():
                         support = edge[0]
                         mi = edge[1]
                         p = self.getpval(support)
@@ -519,26 +519,26 @@ times it occurs in totsupport."""
                             nwritten += 1
                             out.write("\t{}\t{}".format(self.decodeName(gene), mi / support))
                     out.write("\n")
-        print "{} edges written to consensus network.".format(nwritten)
+        print("{} edges written to consensus network.".format(nwritten))
 
         return nwritten
 
     def saveConsensusBySupport(self, filename, minsupport, header):
-        print "Saving consensus network to {} (by support={})...".format(filename, minsupport)
+        print("Saving consensus network to {} (by support={})...".format(filename, minsupport))
         nwritten = 0
         with open(filename, "w") as out:
             out.write(header)
-            for (hub, table) in self.totsupport.iteritems():
+            for (hub, table) in self.totsupport.items():
                 if len(table) > 0:
                     out.write(self.decodeName(hub))
-                    for (gene, edge) in table.iteritems():
+                    for (gene, edge) in table.items():
                         support = edge[0]
                         mi = edge[1]
                         if support >= minsupport:
                             nwritten += 1
                             out.write("\t{}\t{}".format(self.decodeName(gene), mi / support))
                     out.write("\n")
-        print "{} edges written to consensus network.".format(nwritten)
+        print("{} edges written to consensus network.".format(nwritten))
 
         return nwritten
 
@@ -571,25 +571,25 @@ class bstableNP(bstable):
         """Returns a dictionary mapping each support count (ie,
 number of bootstrap files an edge appears in) to the number of
 times it occurs in totsupport."""
-        dist = dict(zip(*numpy.unique(self.supportArray, return_counts=True)))
+        dist = dict(list(zip(*numpy.unique(self.supportArray, return_counts=True))))
         del(dist[0])
-        for x in dist.keys():
+        for x in list(dist.keys()):
             if x > max:
                 del(dist[x])
         return dist
 
     def saveConsensusBySupport(self, filename, minsupport, header):
-        print "Saving consensus network to {} (by support={})...".format(filename, minsupport)
+        print("Saving consensus network to {} (by support={})...".format(filename, minsupport))
         start = time.time()
         nwritten = 0
         with open(filename, "w") as out:
             out.write(header)
-            for hub in xrange(self.ngenes):
+            for hub in range(self.ngenes):
                 hubName = self.decodeName(hub)
                 if not hubName:
                     continue
                 empty = True
-                for gene in xrange(self.ngenes):
+                for gene in range(self.ngenes):
                     geneName = self.decodeName(gene)
                     if not geneName:
                         continue
@@ -603,7 +603,7 @@ times it occurs in totsupport."""
                 if not empty:
                     out.write("\n")
         now = time.time()
-        print "{} edges written to consensus network ({} mins).".format(nwritten, (now - start) / 60)
+        print("{} edges written to consensus network ({} mins).".format(nwritten, (now - start) / 60))
 
         return nwritten
 
@@ -704,10 +704,10 @@ If the -a option is specified, both the hub gene and the target gene are require
                 self.genesfile2 = arg
 
         if self.adjfile == None:
-            print "The adjfile argument is required."
+            print("The adjfile argument is required.")
             return False
         if self.genesfile == None:
-            print "The genesfile argument is required."
+            print("The genesfile argument is required.")
             return False
         self.geneslist = readLines(self.genesfile, col=0)
         if self.genesfile2 != None:
@@ -909,7 +909,7 @@ results to standard output (or to `outfile' if provided) in tab-delimited format
 def aracneAllStats(outfile):
     with open(outfile, "w") as out:
         for i in range(1, 100):
-            print i
+            print(i)
             dpi = "results/all.gene_RPKM.aracne.nozero-{}.dpi.adj".format(i)
             if os.path.isfile(dpi):
                 tp1 = aracneTableStats("results/all.gene_RPKM.aracne.nozero-{}.adj".format(i))
@@ -953,7 +953,7 @@ The following options are available:
             elif next == "-n":
                 n = ensureInt(a)
                 if n == None:
-                    print "The value of -n, {}, should be a number.".format(a)
+                    print("The value of -n, {}, should be a number.".format(a))
                     return False
                 self.nbins = n
                 next = None
@@ -974,7 +974,7 @@ The following options are available:
                 self.infile = a
 
         if self.infile == None or not os.path.isfile(self.infile):
-            print "This command requires an input file."
+            print("This command requires an input file.")
             return False
 
         return True
@@ -984,7 +984,7 @@ The following options are available:
                       low=self.low, high=self.high, overflow=self.overflow)
 
 def doMIhistogram(filename, outfile, mifile=None, nbins=100, summi=False, low=None, high=None, overflow=False):
-    print (summi, low, high, overflow)
+    print((summi, low, high, overflow))
     mis = []
     bins = [None for i in range(nbins+1)]
     outstream = sys.stdout
@@ -1174,7 +1174,7 @@ Output will be written to standard output or to the file specified with the -o o
             elif next == "-nb":
                 n = ensureInt(a)
                 if n == None:
-                    print "The argument {} should be a number.".format(a)
+                    print("The argument {} should be a number.".format(a))
                     return False
                 else:
                     self.nsamples = n
@@ -1186,11 +1186,11 @@ Output will be written to standard output or to the file specified with the -o o
                 self.genesfile = a
 
         if self.genesfile == None:
-            print "This command requires an input file."
+            print("This command requires an input file.")
             return False
 
         if not os.path.isfile(self.genesfile):
-            print "File {} does not exist.".format(self.genesfile)
+            print("File {} does not exist.".format(self.genesfile))
             return False
 
         return True
@@ -1202,7 +1202,7 @@ Output will be written to standard output or to the file specified with the -o o
             doShuffledDataset(self.genesfile, outfile=self.outfile, genecols=self.genecols)
 
 def doRandomDataset(genesfile, nsamples, outfile=None):
-    print "Generating random dataset with {} samples.".format(nsamples)
+    print("Generating random dataset with {} samples.".format(nsamples))
     with open(outfile, "w") as out:
         out.write("GeneId\t")
         for i in range(0, nsamples):
@@ -1220,10 +1220,10 @@ def doRandomDataset(genesfile, nsamples, outfile=None):
                 out.write("\n")
 
 def doShuffledDataset(infile, outfile=None, genecols=2):
-    print "Shuffling dataset {}.".format(infile)
+    print("Shuffling dataset {}.".format(infile))
     out = sys.stdout
     if outfile != None:
-        print "Writing dataset to file {}.".format(outfile)
+        print("Writing dataset to file {}.".format(outfile))
         out = open(outfile, "w")
 
     try:
@@ -1277,10 +1277,10 @@ the specified `threshold'. The following options are available:
             elif self.threshold == None:
                 self.threshold = ensureFloat(a)
         if self.infile == None:
-            print "This command requires an input file."
+            print("This command requires an input file.")
             return False
         if self.threshold == None:
-            print "This command requires an MI threshold."
+            print("This command requires an MI threshold.")
             return False
         return True
 
@@ -1331,9 +1331,9 @@ def doFilter(infile, threshold, outfile=None, total=False):
         if outfile != None:
             out.close()
     if total:
-        print "{} hub genes seen, {} written.".format(nin, nout)
+        print("{} hub genes seen, {} written.".format(nin, nout))
     else:
-        print "{} edges seen, {} edges written for {} hub genes.".format(nin, nout, nrows)
+        print("{} edges seen, {} edges written for {} hub genes.".format(nin, nout, nrows))
 
 # Cleanup command
 
@@ -1438,7 +1438,7 @@ Options:
             # print self.options, nargs, next
         # print self.operator, self.infile, self.outfile
         if nargs < 3:
-            print "This command requires three arguments."
+            print("This command requires three arguments.")
             return False
         return True
 
@@ -1461,7 +1461,7 @@ Options:
         elif op == "cx":
             AdjToCx(self.infile, self.outfile, self.options, className=CXwriter.CXwriterCyto)
         else:
-            print "Operator should be one of: na, ma, nc, ca, co, ac, ax, cx."
+            print("Operator should be one of: na, ma, nc, ca, co, ac, ax, cx.")
 
 def networkToAdj(infile, outfile, options):
     if "-s" in options:
@@ -1501,7 +1501,7 @@ def matrixToAdj(infile, outfile, options):
     with open(outfile, "w") as out:
         with open(infile, "r") as f:
             c = csv.reader(f, delimiter='\t')
-            genes = c.next()
+            genes = next(c)
             genes = [ g.strip('"') for g in genes ]
             ngenes = len(genes)
             for line in c:
@@ -1601,7 +1601,7 @@ def AdjToCytoscape(infile, outfile, options):
                             seen[key] = float(parsed[i+1])
                             #out.write("{}\t{}\t{}\n".format(hub, gene, parsed[i+1]))
                             #extracted += 1
-        for (key, mi) in seen.iteritems():
+        for (key, mi) in seen.items():
             extracted += 1
             w = key.split("#")
             if histogram:
@@ -1650,7 +1650,7 @@ def cytoscapeToConn(infile, outfile):
     table = {}
     hdr = True
 
-    print "Parsing file {}...".format(infile)
+    print("Parsing file {}...".format(infile))
     with genOpen(infile, "r") as f:
         for line in f:
             if hdr:
@@ -1671,10 +1671,10 @@ def cytoscapeToConn(infile, outfile):
                     c = hubConnections(gene, hub)
                     table[gene] = c
                     
-    sortedConns = sorted(table.values(), key=hubConnections.getNconns, reverse=True)
-    print "Top 5 hubs:"
+    sortedConns = sorted(list(table.values()), key=hubConnections.getNconns, reverse=True)
+    print("Top 5 hubs:")
     for c in sortedConns[0:5]:
-        print "{}\t{}".format(c.hub, c.nconns)
+        print("{}\t{}".format(c.hub, c.nconns))
 
     with open(outfile, "w") as out:
         for c in sortedConns:
@@ -1739,7 +1739,7 @@ def usage(what=None):
     if what == None:
         message("Usage: apple.py command arguments...\n")
         message("The following commands are available:\n")
-        for (name, c) in COMMANDS.iteritems():
+        for (name, c) in COMMANDS.items():
             message("  {} - {}", name, c.shortdesc)
         message("\nUse 'apple.py command' to get a description of each command and its arguments.\n")
 
